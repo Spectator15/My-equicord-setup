@@ -1,5 +1,9 @@
 @echo off
 setlocal DisableDelayedExpansion
+rem This project contains modified third-party GPL-licensed plugin code.
+rem Original copyright and authorship remain with the respective upstream contributors.
+rem Modifications for My Equicord Setup by Spectator15, 2026-08-15.
+rem SPDX-License-Identifier: GPL-3.0-or-later
 rem The marker is deliberately assembled so the loader cannot find its own search text.
 powershell.exe -NoLogo -NoProfile -ExecutionPolicy Bypass -Command "& { try { $f = [System.IO.File]::ReadAllText('%~f0'); $marker = ('#' + 'region INIT'); $start = $f.IndexOf($marker, [System.StringComparison]::Ordinal); if ($start -lt 0) { throw 'Setup marker not found.' }; Invoke-Expression ($f.Substring($start)) } catch { try { $Host.UI.RawUI.WindowTitle = 'EquicordSetup - Startup Error' } catch {}; Write-Host ''; Write-Host 'EquicordSetup could not start.' -ForegroundColor Red; Write-Host $_.Exception.Message -ForegroundColor Yellow; if ($_.InvocationInfo.PositionMessage) { Write-Host ''; Write-Host $_.InvocationInfo.PositionMessage -ForegroundColor DarkYellow }; Write-Host ''; Read-Host 'Press Enter to close' | Out-Null; exit 1 } }"
 set "EQUICORD_SETUP_EXIT=%ERRORLEVEL%"
@@ -559,6 +563,9 @@ function Write-PluginSmoothType {
  * Vencord, a Discord client mod
  * Copyright (c) 2024 Vendicated and contributors
  * SPDX-License-Identifier: GPL-3.0-or-later
+ *
+ * Modified for My Equicord Setup by Spectator15, 2026-08-15.
+ * Original copyright and authorship remain with the respective upstream contributors.
  */
 
 import { definePluginSettings } from "@api/Settings";
@@ -749,6 +756,9 @@ function Write-PluginStreamerModeOnStream {
  * Vencord, a Discord client mod
  * Copyright (c) 2026 Vendicated and contributors
  * SPDX-License-Identifier: GPL-3.0-or-later
+ *
+ * Modified for My Equicord Setup by Spectator15, 2026-08-15.
+ * Original copyright and authorship remain with the respective upstream contributors.
  */
 
 import { Devs } from "@utils/constants";
@@ -795,6 +805,9 @@ function Write-PluginExportDM {
  * Vencord, a Discord client mod
  * Copyright (c) 2026 Vendicated and contributors
  * SPDX-License-Identifier: GPL-3.0-or-later
+ *
+ * Modified for My Equicord Setup by Spectator15, 2026-08-15.
+ * Original copyright and authorship remain with the respective upstream contributors.
  */
 
 import { addContextMenuPatch, NavContextMenuPatchCallback, removeContextMenuPatch } from "@api/ContextMenu";
@@ -1825,6 +1838,9 @@ function Write-PluginServerCloner {
  * Vencord, a Discord client mod
  * Copyright (c) 2026 Vendicated and contributors
  * SPDX-License-Identifier: GPL-3.0-or-later
+ *
+ * Modified for My Equicord Setup by Spectator15, 2026-08-15.
+ * Original copyright and authorship remain with the respective upstream contributors.
  */
 
 import { addContextMenuPatch, NavContextMenuPatchCallback, removeContextMenuPatch } from "@api/ContextMenu";
@@ -1934,6 +1950,9 @@ function Write-PluginAntiDeleteMessage {
  * Vencord, a Discord client mod
  * Copyright (c) 2026 Vendicated and contributors
  * SPDX-License-Identifier: GPL-3.0-or-later
+ *
+ * Modified for My Equicord Setup by Spectator15, 2026-08-15.
+ * Original copyright and authorship remain with the respective upstream contributors.
  */
 
 import * as DataStore from "@api/DataStore";
@@ -1992,6 +2011,9 @@ function Write-PluginLastSeen {
  * Vencord, a Discord client mod
  * Copyright (c) 2026 Vendicated and contributors
  * SPDX-License-Identifier: GPL-3.0-or-later
+ *
+ * Modified for My Equicord Setup by Spectator15, 2026-08-15.
+ * Original copyright and authorship remain with the respective upstream contributors.
  */
 
 import * as DataStore from "@api/DataStore";
@@ -2209,6 +2231,9 @@ function Write-PluginStreamProof {
  * Vencord, a Discord client mod
  * Copyright (c) 2026 Vendicated and contributors
  * SPDX-License-Identifier: GPL-3.0-or-later
+ *
+ * Modified for My Equicord Setup by Spectator15, 2026-08-15.
+ * Original copyright and authorship remain with the respective upstream contributors.
  */
 
 import { ChatBarButton, ChatBarButtonFactory } from "@api/ChatButtons";
@@ -2259,6 +2284,9 @@ function Write-PluginFakePerm {
  * Vencord, a Discord client mod
  * Copyright (c) 2026 Vendicated and contributors
  * SPDX-License-Identifier: GPL-3.0-or-later
+ *
+ * Modified for My Equicord Setup by Spectator15, 2026-08-15.
+ * Original copyright and authorship remain with the respective upstream contributors.
  */
 
 import { addContextMenuPatch, NavContextMenuPatchCallback, removeContextMenuPatch } from "@api/ContextMenu";
@@ -2396,6 +2424,9 @@ function Write-PluginFakeDM {
  * Vencord, a Discord client mod
  * Copyright (c) 2026 Vendicated and contributors
  * SPDX-License-Identifier: GPL-3.0-or-later
+ *
+ * Modified for My Equicord Setup by Spectator15, 2026-08-15.
+ * Original copyright and authorship remain with the respective upstream contributors.
  */
 
 import "./styles.css";
@@ -2564,6 +2595,11 @@ export default definePlugin({
 '@
     if (Write-Utf8FileAtomic -Path (Join-Path $dir "index.tsx") -Content $content1) { $changed = $true }
     $content2 = @'
+/*
+ * Modified for My Equicord Setup by Spectator15, 2026-08-15.
+ * Original copyright and authorship remain with the respective upstream contributors.
+ */
+
 .fdm-panel {
     font-family: var(--font-primary);
 }
@@ -2786,6 +2822,9 @@ function Write-PluginAntiMoveDeco {
  * Vencord, a Discord client mod
  * Copyright (c) 2026 Vendicated and contributors
  * SPDX-License-Identifier: GPL-3.0-or-later
+ *
+ * Modified for My Equicord Setup by Spectator15, 2026-08-15.
+ * Original copyright and authorship remain with the respective upstream contributors.
  */
 
 import { ChatBarButton, ChatBarButtonFactory } from "@api/ChatButtons";

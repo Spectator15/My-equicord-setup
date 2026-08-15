@@ -52,4 +52,6 @@ After that, the same script can be used whenever I want to change plugins, updat
 
 This is a personal setup and is not an official Equicord, Vencord, Nightcord, or Discord project.
 
+This repository is distributed under GPL-3.0-or-later. Third-party components retain their original copyright and attribution.
+
 I do not claim ownership of third-party code included or adapted here. Existing copyright and licence notices inside plugin source are kept intact.
