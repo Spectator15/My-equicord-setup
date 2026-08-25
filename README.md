@@ -41,9 +41,11 @@ Where needed, I have removed or replaced known unwanted token-grabbing behaviour
 
 This is made for **Windows**.
 
-1. Download or clone the repo.
+1. Download `Equicord.bat` from the [latest GitHub release](https://github.com/Spectator15/My-equicord-setup/releases/latest), or download it directly from the repository.
 2. Run `Equicord.bat` normally.
 3. Follow the menu.
+
+Normal users do not need to build or combine anything. The committed `Equicord.bat` is the complete ready-to-run installer.
 
 > [!WARNING]
 > Do not run `Equicord.bat` as Administrator. The script intentionally refuses to continue when elevated.
@@ -51,6 +53,18 @@ This is made for **Windows**.
 On a fresh setup, the full setup option handles the Equicord installation, plugin selection, dependencies, build, and Discord injection.
 
 After that, the same script can be used whenever I want to change plugins, update Equicord, rebuild it, or repair the Discord injection.
+
+## Development
+
+The editable installer and plugin sources live under `src/`. Contributors should change those source files rather than editing the generated `Equicord.bat` directly.
+
+To rebuild the ready-to-run installer from the repository root, use:
+
+```powershell
+.\build\Build-Release.ps1
+```
+
+The build reads the launcher, installer source, plugin manifest, and individual plugin files, then regenerates the root `Equicord.bat`. The generated file remains committed so normal users can continue to download and run it directly.
 
 ---
 

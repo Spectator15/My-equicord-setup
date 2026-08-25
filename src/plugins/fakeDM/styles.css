@@ -1,0 +1,212 @@
+/*
+ * Modified for My Equicord Setup by Spectator15, 2026-08-15.
+ * Original copyright and authorship remain with the respective upstream contributors.
+ */
+
+.fdm-panel {
+    font-family: var(--font-primary);
+}
+
+.fdm-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 12px 14px 10px;
+    border-bottom: 1px solid rgb(255 255 255 / 8%);
+}
+
+.fdm-title {
+    color: #fff;
+    font-size: 15px;
+    font-weight: 700;
+}
+
+.fdm-close {
+    padding: 2px 6px;
+    border: none;
+    border-radius: 4px;
+    background: none;
+    color: rgb(255 255 255 / 50%);
+    font-size: 16px;
+    cursor: pointer;
+}
+
+.fdm-close:hover {
+    background: rgb(255 255 255 / 10%);
+    color: #fff;
+}
+
+.fdm-sender-row {
+    display: flex;
+    gap: 6px;
+    padding: 0 12px 8px;
+}
+
+.fdm-sender-btn {
+    display: flex;
+    flex: 1;
+    gap: 6px;
+    align-items: center;
+    padding: 5px 8px;
+    border: 1.5px solid transparent;
+    border-radius: 8px;
+    background: rgb(255 255 255 / 5%);
+    color: rgb(255 255 255 / 50%);
+    font-size: 13px;
+    font-weight: 500;
+    cursor: pointer;
+}
+
+.fdm-sender-btn-active {
+    border-color: #5865f2;
+    background: rgb(88 101 242 / 15%);
+    color: #fff;
+}
+
+.fdm-sender-avatar {
+    width: 24px;
+    height: 24px;
+    border-radius: 50%;
+    object-fit: cover;
+    flex-shrink: 0;
+}
+
+.fdm-sender-avatar-placeholder {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: #5865f2;
+    color: #fff;
+    font-size: 11px;
+    font-weight: 700;
+}
+
+.fdm-sender-name {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.fdm-date-row {
+    display: flex;
+    gap: 6px;
+    align-items: center;
+    padding: 0 12px 8px;
+}
+
+.fdm-date-label {
+    color: rgb(255 255 255 / 40%);
+    font-size: 12px;
+    white-space: nowrap;
+    flex-shrink: 0;
+}
+
+.fdm-date-input {
+    flex: 1;
+    padding: 4px 8px;
+    border: 1px solid rgb(255 255 255 / 12%);
+    border-radius: 6px;
+    outline: none;
+    background: rgb(255 255 255 / 7%);
+    color: #fff;
+    font-size: 12px;
+}
+
+.fdm-date-input:focus {
+    border-color: #5865f2;
+}
+
+.fdm-date-now {
+    padding: 4px 8px;
+    border: none;
+    border-radius: 6px;
+    background: rgb(255 255 255 / 8%);
+    color: rgb(255 255 255 / 60%);
+    font-size: 11px;
+    cursor: pointer;
+    flex-shrink: 0;
+}
+
+.fdm-date-now:hover {
+    background: rgb(255 255 255 / 15%);
+    color: #fff;
+}
+
+.fdm-input-row {
+    padding: 0 12px 12px;
+}
+
+.fdm-textarea {
+    box-sizing: border-box;
+    width: 100%;
+    margin-bottom: 8px;
+    padding: 8px 10px;
+    border: 1px solid rgb(255 255 255 / 10%);
+    border-radius: 8px;
+    outline: none;
+    background: rgb(255 255 255 / 6%);
+    color: #fff;
+    font-family: var(--font-primary);
+    font-size: 14px;
+    line-height: 1.4;
+    resize: none;
+}
+
+.fdm-textarea:focus {
+    border-color: #5865f2;
+}
+
+.fdm-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 6px;
+}
+
+.fdm-send-btn {
+    padding: 6px 16px;
+    border: none;
+    border-radius: 6px;
+    background: #5865f2;
+    color: #fff;
+    font-size: 13px;
+    font-weight: 600;
+    cursor: pointer;
+}
+
+.fdm-send-btn:disabled {
+    background: rgb(88 101 242 / 40%);
+    cursor: not-allowed;
+}
+
+.fdm-send-btn:not(:disabled):hover {
+    background: #4752c4;
+}
+
+.fdm-clear-btn {
+    padding: 6px 12px;
+    border: 1px solid rgb(237 66 69 / 30%);
+    border-radius: 6px;
+    background: rgb(237 66 69 / 15%);
+    color: #ed4245;
+    font-size: 13px;
+    font-weight: 500;
+    cursor: pointer;
+}
+
+.fdm-clear-btn:hover {
+    background: rgb(237 66 69 / 25%);
+}
+
+.fdm-status {
+    padding: 0 12px 10px;
+    font-size: 12px;
+    text-align: center;
+}
+
+.fdm-status-ok {
+    color: #3ba55d;
+}
+
+.fdm-status-error {
+    color: #ed4245;
+}
