@@ -52,7 +52,7 @@ On a fresh setup, the full setup option handles the Equicord installation, plugi
 
 ## Linux beta
 
-Download `Equicord-Linux.sh` from the [Linux beta release](https://github.com/Spectator15/My-equicord-setup/releases/tag/v1.1.0-beta.1), then run:
+Download `Equicord-Linux.sh` from the [Linux beta release](https://github.com/Spectator15/My-equicord-setup/releases/tag/v1.1.0-beta.2), then run:
 
 ```bash
 chmod +x Equicord-Linux.sh

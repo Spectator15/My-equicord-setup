@@ -120,9 +120,25 @@ test_missing_entry() {
 test_windows_specific_detection() {
     source_release
     local stage="$temporary_root/windows-specific"
+    local warnings="$temporary_root/windows-specific-warning.txt"
     extract_embedded_plugins "$stage"
     printf '\nconst platform = process.platform === "win32";\n' >> "$stage/smoothType/index.tsx"
-    ! validate_plugin_tree "$stage"
+    validate_plugin_tree "$stage" 2> "$warnings"
+    grep -Fq 'Compatibility heuristic warning for smoothType' "$warnings"
+    grep -Fq 'does not block deployment' "$warnings"
+}
+
+test_harmless_windows_text() {
+    source_release
+    local stage="$temporary_root/harmless-windows-text"
+    local warnings="$temporary_root/harmless-windows-text-warning.txt"
+    extract_embedded_plugins "$stage"
+    {
+        printf '\n// Documentation mentions win32, powershell and cmd.exe.\n'
+        printf 'const compatibilityNote = "win32 powershell cmd.exe";\n'
+    } >> "$stage/smoothType/index.tsx"
+    validate_plugin_tree "$stage" 2> "$warnings"
+    ! grep -Fq 'Compatibility heuristic warning' "$warnings"
 }
 
 test_upstream_collision() {
@@ -325,6 +341,23 @@ test_exact_process_targeting() {
         grep -Fq 'pgrep -x "$process_name"' "$source_file"
 }
 
+test_process_poll_delay() {
+    source_release
+    local sleep_calls=0
+    # shellcheck disable=SC2329
+    sleep() {
+        [[ ${1:-} == 1 ]]
+        sleep_calls=$((sleep_calls + 1))
+    }
+    MES_TEST_MODE=0
+    wait_for_process_poll
+    [[ $sleep_calls -eq 1 ]]
+    MES_TEST_MODE=1
+    wait_for_process_poll
+    [[ $sleep_calls -eq 1 ]]
+    ! grep -Fq 'read -r -t 1 -n 0' "$source_file"
+}
+
 test_root_refusal() {
     source_release
     # shellcheck disable=SC2329
@@ -352,7 +385,7 @@ test_missing_git() {
         if [[ ${1:-} == -v && ${2:-} == git ]]; then return 1; fi
         builtin command "$@"
     }
-    ! check_base_dependencies
+    ! check_dependencies
 }
 
 test_missing_node() {
@@ -362,7 +395,7 @@ test_missing_node() {
         if [[ ${1:-} == -v && ${2:-} == node ]]; then return 1; fi
         builtin command "$@"
     }
-    ! check_base_dependencies
+    ! check_dependencies
 }
 
 test_old_node() {
@@ -371,20 +404,122 @@ test_old_node() {
     node() {
         if [[ ${1:-} == -p ]]; then printf '20\n'; else printf 'v20.19.0\n'; fi
     }
-    ! check_base_dependencies
+    ! check_dependencies
 }
 
 test_missing_package_manager() {
     source_release
     with_test_environment missing-package-manager
-    mkdir -p "$WORKSPACE"
-    printf '{"packageManager":"pnpm@11.22.0"}\n' > "$WORKSPACE/package.json"
     # shellcheck disable=SC2329
     command() {
         if [[ ${1:-} == -v && ( ${2:-} == pnpm || ${2:-} == corepack ) ]]; then return 1; fi
         builtin command "$@"
     }
-    ! select_upstream_package_manager
+    ! check_dependencies
+}
+
+setup_dependency_workspace() {
+    local suffix=$1 bare seed
+    with_test_environment "dependency-$suffix"
+    # Git for Windows does not ship pgrep, so provide the Linux command the
+    # dependency preflight expects without affecting process-oriented tests.
+    # shellcheck disable=SC2329
+    pgrep() { return 1; }
+    bare="$temporary_root/dependency-$suffix/upstream.git"
+    seed="$temporary_root/dependency-$suffix/seed"
+    make_fake_upstream "$bare" "$seed"
+    export MES_TEST_EQUICORD_REMOTE="$bare"
+    clone_or_validate_workspace
+}
+
+test_clean_dependency_preflight() {
+    source_release
+    with_test_environment dependency-clean
+    local output="$temporary_root/dependency-clean-report.txt"
+    # shellcheck disable=SC2329
+    pgrep() { return 1; }
+    check_dependencies > "$output" 2>&1 || { cat "$output" >&2; return 1; }
+    grep -Fq "exact package-manager name and version will be read from Equicord's package.json" "$output"
+    grep -Fq 'exact package-manager validation will follow source acquisition' "$output"
+    [[ -z ${PACKAGE_MANAGER_COMMAND[*]-} ]]
+}
+
+test_existing_checkout_dependency_preflight() {
+    source_release
+    setup_dependency_workspace existing
+    local output="$temporary_root/dependency-existing-report.txt"
+    # shellcheck disable=SC2329
+    pnpm() { [[ ${1:-} == --version ]] && printf '11.22.0\n'; }
+    check_dependencies > "$output" 2>&1 || { cat "$output" >&2; return 1; }
+    grep -Fq 'valid manager-owned Equicord checkout exists' "$output"
+    [[ ${PACKAGE_MANAGER_COMMAND[*]-} == pnpm && $PACKAGE_MANAGER_DECLARATION == pnpm@11.22.0 ]]
+}
+
+test_missing_corepack_with_matching_pnpm() {
+    source_release
+    setup_dependency_workspace no-corepack
+    local output="$temporary_root/dependency-no-corepack-report.txt"
+    # shellcheck disable=SC2329
+    pnpm() { [[ ${1:-} == --version ]] && printf '11.22.0\n'; }
+    # shellcheck disable=SC2329
+    command() {
+        if [[ ${1:-} == -v && ${2:-} == corepack ]]; then return 1; fi
+        builtin command "$@"
+    }
+    check_dependencies > "$output" 2>&1 || { cat "$output" >&2; return 1; }
+    grep -Fq 'Corepack is unavailable; the installed pnpm must exactly match' "$output"
+    [[ ${PACKAGE_MANAGER_COMMAND[*]-} == pnpm ]]
+}
+
+test_missing_pnpm_with_corepack() {
+    source_release
+    setup_dependency_workspace no-pnpm
+    local output="$temporary_root/dependency-no-pnpm-report.txt"
+    # shellcheck disable=SC2329
+    corepack() {
+        [[ ${1:-} == pnpm && ${2:-} == --version ]] && printf '11.22.0\n'
+    }
+    # shellcheck disable=SC2329
+    command() {
+        if [[ ${1:-} == -v && ${2:-} == pnpm ]]; then return 1; fi
+        builtin command "$@"
+    }
+    check_dependencies > "$output" 2>&1 || { cat "$output" >&2; return 1; }
+    grep -Fq 'pnpm is not installed directly; Corepack can provide' "$output"
+    [[ ${PACKAGE_MANAGER_COMMAND[*]-} == $'corepack\npnpm' ]]
+}
+
+test_declared_pnpm_version_mismatch() {
+    source_release
+    setup_dependency_workspace mismatch
+    local output="$temporary_root/dependency-mismatch-report.txt"
+    # shellcheck disable=SC2329
+    pnpm() { [[ ${1:-} == --version ]] && printf '11.21.0\n'; }
+    # shellcheck disable=SC2329
+    command() {
+        if [[ ${1:-} == -v && ${2:-} == corepack ]]; then return 1; fi
+        builtin command "$@"
+    }
+    ! check_dependencies > "$output" 2>&1
+    grep -Fq 'Equicord declares pnpm 11.22.0, but pnpm 11.21.0 is active and Corepack is unavailable' "$output" || {
+        cat "$output" >&2
+        return 1
+    }
+}
+
+test_missing_npm_is_reported() {
+    source_release
+    with_test_environment missing-npm
+    local output="$temporary_root/dependency-missing-npm-report.txt"
+    # shellcheck disable=SC2329
+    pgrep() { return 1; }
+    # shellcheck disable=SC2329
+    command() {
+        if [[ ${1:-} == -v && ${2:-} == npm ]]; then return 1; fi
+        builtin command "$@"
+    }
+    check_dependencies > "$output" 2>&1 || { cat "$output" >&2; return 1; }
+    grep -Fq 'npm is unavailable' "$output"
 }
 
 test_equibop_detection_code() { grep -Fq 'org.equicord.equibop' "$source_file" && grep -Fq 'does not automatically include' "$source_file"; }
@@ -439,7 +574,7 @@ run_test '9 missing declared package manager is rejected' test_missing_package_m
 run_test '10 plugin structure validation' test_plugin_entries
 run_test '11 missing plugin entry is rejected' test_missing_entry
 run_test '12 plugin name collision is rejected' test_upstream_collision
-run_test '13 Windows-specific plugin detection' test_windows_specific_detection
+run_test '13 Windows-specific plugin heuristic warning' test_windows_specific_detection
 run_test '14 plugin build failure rollback path' test_build_failure_rollback_path
 run_test '15 successful plugin deployment and payload equality' test_payload_matches
 run_test '16 repeated installation is deterministic' test_atomic_repeated_deploy
@@ -480,6 +615,14 @@ run_test 'companion CSS is packaged' test_companion_file
 run_test 'all runtime plugin names registered' test_runtime_names
 run_test '10 plugins and 11 files registered' test_plugin_count
 run_test 'safe exact-path removal' test_safe_removal
+run_test 'clean-install unified dependency preflight' test_clean_dependency_preflight
+run_test 'existing-checkout package-manager preflight' test_existing_checkout_dependency_preflight
+run_test 'missing Corepack with matching pnpm' test_missing_corepack_with_matching_pnpm
+run_test 'missing pnpm with Corepack assistance' test_missing_pnpm_with_corepack
+run_test 'upstream-declared pnpm version mismatch' test_declared_pnpm_version_mismatch
+run_test 'missing npm is reported without false blocking' test_missing_npm_is_reported
+run_test 'harmless Windows terms do not trigger heuristic' test_harmless_windows_text
+run_test 'process polling uses one-second sleep and skips it in tests' test_process_poll_delay
 
 printf '\nLinux release tests: %d passed, %d failed.\n' "$passes" "$failures"
 [[ $failures -eq 0 ]]
