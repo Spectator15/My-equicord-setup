@@ -13,7 +13,7 @@ set -euo pipefail
 IFS=$'\n\t'
 
 readonly MANAGER_NAME="My Equicord Setup"
-readonly MANAGER_VERSION="1.1.0-beta.1"
+readonly MANAGER_VERSION="1.1.0-beta.2"
 readonly STATE_FORMAT="1"
 readonly EQUICORD_REMOTE="https://github.com/Equicord/Equicord.git"
 readonly TESTED_EQUICORD_COMMIT="0d27aec1ab604f1c0d7f7eb9114114e71da93573"
@@ -256,10 +256,9 @@ distribution_name() {
     fi
 }
 
-print_dependency_help() {
-    local missing=$1 id_like=''
+print_dependency_install_help() {
+    local id_like=''
     [[ -r /etc/os-release ]] && id_like=$(awk -F= '$1 == "ID" || $1 == "ID_LIKE" {gsub(/"/, "", $2); printf "%s ", $2}' /etc/os-release)
-    warn "Missing requirements: $missing"
     case " $id_like " in
         *" debian "*|*" ubuntu "*)
             printf 'Install base tools with: sudo apt update && sudo apt install git curl coreutils build-essential procps\n' >&2
@@ -280,28 +279,77 @@ print_dependency_help() {
     printf 'Install a current Node.js LTS release from a trusted distribution source. Equicord currently requires Node.js 22 or newer.\n' >&2
 }
 
-check_base_dependencies() {
-    local -a missing=()
-    local command_name
+workspace_is_valid_for_dependency_check() {
+    [[ -d $WORKSPACE/.git && -f $OWNER_MARKER && -f $WORKSPACE/package.json ]] || return 1
+    validate_owner_marker >/dev/null 2>&1 || return 1
+    validate_official_remote >/dev/null 2>&1 || return 1
+}
+
+check_dependencies() {
+    local -a errors=() notes=()
+    local command_name node_major='0' has_npm=0 has_corepack=0 has_pnpm=0
+    info "Checking Linux build dependencies."
+    info "The exact package-manager name and version will be read from Equicord's package.json after its source is available."
     for command_name in git node curl sha256sum base64 mktemp realpath awk sed grep find pgrep nohup; do
-        command -v "$command_name" >/dev/null 2>&1 || missing+=("$command_name")
+        command -v "$command_name" >/dev/null 2>&1 || errors+=("Missing required command: $command_name")
     done
-    if ((${#missing[@]})); then
-        print_dependency_help "${missing[*]}"
+
+    command -v npm >/dev/null 2>&1 && has_npm=1
+    command -v corepack >/dev/null 2>&1 && has_corepack=1
+    command -v pnpm >/dev/null 2>&1 && has_pnpm=1
+
+    if command -v node >/dev/null 2>&1; then
+        node_major=$(node -p 'Number(process.versions.node.split(".")[0])' 2>/dev/null || printf '0')
+        if [[ ! $node_major =~ ^[0-9]+$ || $node_major -lt 22 ]]; then
+            errors+=("Node.js 22 or newer is required; found $(node --version 2>/dev/null || printf unknown)")
+        fi
+    fi
+
+    if [[ $has_pnpm -eq 0 && $has_corepack -eq 0 ]]; then
+        errors+=("Neither pnpm nor Corepack is available to run Equicord's declared package manager")
+    elif [[ $has_pnpm -eq 0 ]]; then
+        notes+=("pnpm is not installed directly; Corepack can provide the exact upstream-declared version after confirmation")
+    elif [[ $has_corepack -eq 0 ]]; then
+        notes+=("Corepack is unavailable; the installed pnpm must exactly match the upstream declaration")
+    fi
+    if [[ $has_npm -eq 0 ]]; then
+        notes+=("npm is unavailable; it is not needed when Corepack or an exact matching pnpm can satisfy upstream")
+    fi
+
+    if ((${#errors[@]})); then
+        warn "Dependency check found ${#errors[@]} blocking issue(s):"
+        printf '  - %s\n' "${errors[@]}" >&2
+        if ((${#notes[@]})); then
+            printf 'Additional dependency notes:\n' >&2
+            printf '  - %s\n' "${notes[@]}" >&2
+        fi
+        print_dependency_install_help
         return 1
     fi
-    local node_major
-    node_major=$(node -p 'Number(process.versions.node.split(".")[0])' 2>/dev/null || printf '0')
-    [[ $node_major =~ ^[0-9]+$ && $node_major -ge 22 ]] || {
-        print_dependency_help "Node.js 22 or newer (found $(node --version 2>/dev/null || printf unknown))"
-        return 1
-    }
+
+    if ((${#notes[@]})); then
+        warn "Dependency notes:"
+        printf '  - %s\n' "${notes[@]}" >&2
+    fi
+
+    if workspace_is_valid_for_dependency_check; then
+        info "A valid manager-owned Equicord checkout exists, so its declared package manager will be validated now."
+        select_upstream_package_manager
+    else
+        info "No valid existing manager workspace is available yet; exact package-manager validation will follow source acquisition."
+    fi
 }
 
 declare -a PACKAGE_MANAGER_COMMAND=()
+PACKAGE_MANAGER_DECLARATION=''
 select_upstream_package_manager() {
     local declaration manager required_version available_version
     declaration=$(node -e 'const p=require(process.argv[1]); process.stdout.write(p.packageManager || "")' "$WORKSPACE/package.json")
+    if [[ $declaration == "$PACKAGE_MANAGER_DECLARATION" && ${#PACKAGE_MANAGER_COMMAND[@]} -gt 0 ]]; then
+        return 0
+    fi
+    PACKAGE_MANAGER_COMMAND=()
+    PACKAGE_MANAGER_DECLARATION=''
     manager=${declaration%@*}
     required_version=${declaration##*@}
     [[ $manager == "pnpm" && -n $required_version && $required_version != "$declaration" ]] || {
@@ -332,6 +380,7 @@ select_upstream_package_manager() {
         fail "Equicord declares pnpm $required_version, but pnpm $available_version is active."
         return 1
     }
+    PACKAGE_MANAGER_DECLARATION=$declaration
     info "Using pnpm $available_version from Equicord's packageManager declaration ($declaration)."
 }
 
@@ -383,6 +432,25 @@ validate_upstream_collisions() {
     done
 }
 
+warn_windows_specific_plugin_code() {
+    local root=$1 plugin=$2 file line lowered line_number
+    local platform_pattern='process[.]platform[[:space:]]*(===|==)[[:space:]]*"win32"'
+    local command_pattern='(exec|execfile|execsync|execfilesync|spawn|spawnsync|bun[.]spawn|deno[.]command)[[:space:]]*[(].*(powershell|cmd[.]exe)'
+    while IFS= read -r file; do
+        line_number=0
+        while IFS= read -r line || [[ -n $line ]]; do
+            line_number=$((line_number + 1))
+            [[ $line =~ ^[[:space:]]*(//|/\*|\*|\*/) ]] && continue
+            lowered=${line,,}
+            if [[ $line =~ $platform_pattern || $lowered =~ $command_pattern ]]; then
+                warn "Compatibility heuristic warning for $plugin at ${file#"$root/"}:$line_number: possible Windows-only executable code."
+                warn "This is not a confirmed incompatibility and does not block deployment. Linux Equicord compilation is the automated compatibility gate; runtime incompatibility requires separate confirmation."
+                return 0
+            fi
+        done < "$file"
+    done < <(find "$root/$plugin" -maxdepth 2 -type f \( -name '*.ts' -o -name '*.tsx' \) -print | LC_ALL=C sort)
+}
+
 validate_plugin_tree() {
     local root=$1 plugin entries file_count
     for plugin in "${BUNDLED_PLUGIN_NAMES[@]}"; do
@@ -393,15 +461,7 @@ validate_plugin_tree() {
         ((${#entries[@]} == 1)) || { fail "Plugin $plugin must contain exactly one index.ts or index.tsx entry."; return 1; }
         file_count=$(find "$root/$plugin" -type f | wc -l | tr -d ' ')
         [[ $file_count -ge 1 ]] || { fail "Plugin $plugin contains no source files."; return 1; }
-        if rg_path=$(command -v rg 2>/dev/null); then
-            if "$rg_path" -n -i 'process\.platform.*"win32"|powershell|cmd\.exe' "$root/$plugin" >/dev/null; then
-                fail "Plugin $plugin contains a Windows-specific runtime dependency."
-                return 1
-            fi
-        elif grep -R -E -i 'process\.platform.*win32|powershell|cmd\.exe' "$root/$plugin" >/dev/null; then
-            fail "Plugin $plugin contains a Windows-specific runtime dependency."
-            return 1
-        fi
+        warn_windows_specific_plugin_code "$root" "$plugin"
     done
 }
 
@@ -504,7 +564,10 @@ verify_plugin_bundle() {
         while IFS= read -r candidate; do
             if grep -aFq "$runtime_name" "$candidate"; then found=1; break; fi
         done < <(find "$WORKSPACE/dist" -maxdepth 3 -type f \( -name '*.js' -o -name '*.asar' \) -print)
-        [[ $found -eq 1 ]] || fail "The Equicord output does not contain bundled plugin $runtime_name."
+        [[ $found -eq 1 ]] || {
+            fail "Compatibility gate failed: the Equicord output does not contain bundled plugin $runtime_name."
+            return 1
+        }
     done
     success "Verified all 10 custom plugin names in the generated Equicord bundle."
 }
@@ -513,7 +576,10 @@ build_equicord() {
     select_upstream_package_manager
     [[ -d $WORKSPACE/node_modules ]] || install_upstream_dependencies
     info "Building Equicord from source."
-    (cd "$WORKSPACE" && "${PACKAGE_MANAGER_COMMAND[@]}" build)
+    if ! (cd "$WORKSPACE" && "${PACKAGE_MANAGER_COMMAND[@]}" build); then
+        fail "Equicord compilation failed. This is a blocking automated compatibility failure, not a heuristic warning."
+        return 1
+    fi
     verify_plugin_bundle
 }
 
@@ -683,6 +749,13 @@ selected_process_name() {
     esac
 }
 
+wait_for_process_poll() {
+    if [[ ${MES_TEST_MODE:-0} == 1 ]]; then
+        return 0
+    fi
+    sleep 1 || true
+}
+
 close_selected_discord() {
     [[ ${MES_SKIP_PROCESS_MANAGEMENT:-0} == 1 ]] && return 0
     local process_name pid deadline
@@ -696,7 +769,7 @@ close_selected_discord() {
         local running=0
         for pid in "${pids[@]}"; do kill -0 "$pid" 2>/dev/null && running=1; done
         [[ $running -eq 0 ]] && return 0
-        read -r -t 1 -n 0 || true
+        wait_for_process_poll
     done
     fail "The selected Discord process did not exit. No broad process kill was used."
 }
@@ -823,7 +896,7 @@ write_state_manifest() {
 perform_install() {
     local update_source=${1:-0} backup
     platform_preflight
-    check_base_dependencies
+    check_dependencies
     make_manager_directories
     clone_or_validate_workspace
     [[ $update_source -eq 0 ]] || update_workspace_fast_forward
@@ -851,7 +924,7 @@ perform_install() {
 perform_rebuild() {
     local backup
     platform_preflight
-    check_base_dependencies
+    check_dependencies
     make_manager_directories
     clone_or_validate_workspace
     select_discord_target
@@ -863,7 +936,7 @@ perform_rebuild() {
 perform_remove() {
     local backup plugin
     platform_preflight
-    check_base_dependencies
+    check_dependencies
     make_manager_directories
     clone_or_validate_workspace
     select_discord_target
@@ -891,7 +964,7 @@ perform_restore() {
     local -a backups=()
     local backup choice
     platform_preflight
-    check_base_dependencies
+    check_dependencies
     make_manager_directories
     clone_or_validate_workspace
     while IFS= read -r backup; do backups+=("$backup"); done < <(find "$BACKUP_ROOT" -mindepth 1 -maxdepth 1 -type d -print | LC_ALL=C sort -r)
