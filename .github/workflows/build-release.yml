@@ -8,7 +8,8 @@ permissions:
   contents: read
 
 jobs:
-  build:
+  windows:
+    name: Windows release and regression tests
     runs-on: windows-latest
 
     steps:
@@ -19,7 +20,7 @@ jobs:
         shell: pwsh
         run: .\build\Build-Release.ps1
 
-      - name: Verify committed release is current
+      - name: Verify committed Windows release is current
         shell: pwsh
         run: |
           git diff --exit-code -- Equicord.bat
@@ -28,34 +29,109 @@ jobs:
           .\Equicord.bat
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
-      - name: Upload ready-to-run installer
+      - name: Upload ready-to-run Windows installer
         uses: actions/upload-artifact@v4
         with:
-          name: Equicord-setup
+          name: Equicord-Windows-setup
           path: Equicord.bat
+          if-no-files-found: error
+
+  linux:
+    name: Linux release, tests, and upstream compile
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Verify Linux source and generated release
+        shell: bash
+        run: |
+          shellcheck src/EquicordSetup.sh build/Build-LinuxRelease.sh build/Test-LinuxRelease.sh
+          ./build/Build-LinuxRelease.sh
+          ./build/Test-LinuxRelease.sh
+          git diff --exit-code -- Equicord-Linux.sh
+          test "$(git ls-files --stage Equicord-Linux.sh | awk '{print $1}')" = "100755"
+          ! grep -q $'\r' Equicord-Linux.sh
+
+      - name: Set up the Node.js version required by Equicord
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Compile bundled plugins against tested upstream Equicord
+        shell: bash
+        env:
+          TESTED_EQUICORD_COMMIT: 0d27aec1ab604f1c0d7f7eb9114114e71da93573
+        run: |
+          git clone --filter=blob:none https://github.com/Equicord/Equicord.git "$RUNNER_TEMP/Equicord"
+          git -C "$RUNNER_TEMP/Equicord" checkout --detach "$TESTED_EQUICORD_COMMIT"
+          mkdir -p "$RUNNER_TEMP/Equicord/src/userplugins"
+          while IFS=$'\t' read -r folder file extra || [[ -n ${folder:-} ]]; do
+            [[ -z ${folder:-} || ${folder:0:1} == '#' ]] && continue
+            mkdir -p "$RUNNER_TEMP/Equicord/src/userplugins/$folder"
+            cp "src/plugins/$folder/$file" "$RUNNER_TEMP/Equicord/src/userplugins/$folder/$file"
+          done < src/plugins/PluginFiles.tsv
+          corepack enable
+          package_manager=$(node -p "require('$RUNNER_TEMP/Equicord/package.json').packageManager")
+          package_version=${package_manager#pnpm@}
+          corepack prepare "pnpm@$package_version" --activate
+          pnpm --dir "$RUNNER_TEMP/Equicord" install --frozen-lockfile
+          pnpm --dir "$RUNNER_TEMP/Equicord" build
+          for plugin in SmoothType StreamerModeOnStream ExportDM ServerCloner AntiDeleteMessage LastSeen StreamProof FakePerm FakeDM AntiMoveDeco; do
+            grep -aR -F -q "$plugin" "$RUNNER_TEMP/Equicord/dist"
+          done
+          test "$(git -C "$RUNNER_TEMP/Equicord" rev-parse HEAD)" = "$TESTED_EQUICORD_COMMIT"
+
+      - name: Upload ready-to-run Linux installer
+        uses: actions/upload-artifact@v4
+        with:
+          name: Equicord-Linux-setup
+          path: Equicord-Linux.sh
           if-no-files-found: error
 
   release:
     if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
-    needs: build
+    needs: [windows, linux]
     runs-on: windows-latest
     permissions:
       contents: write
 
     steps:
-      - name: Download ready-to-run installer
+      - name: Download ready-to-run Windows installer
         uses: actions/download-artifact@v4
         with:
-          name: Equicord-setup
+          name: Equicord-Windows-setup
+          path: release-assets
 
-      - name: Attach installer to version release
+      - name: Download ready-to-run Linux installer
+        uses: actions/download-artifact@v4
+        with:
+          name: Equicord-Linux-setup
+          path: release-assets
+
+      - name: Attach installers to version release
         shell: pwsh
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
+          $assets = @(
+              "release-assets/Equicord.bat",
+              "release-assets/Equicord-Linux.sh"
+          )
           gh release view "$env:GITHUB_REF_NAME" --repo "$env:GITHUB_REPOSITORY" *> $null
           if ($LASTEXITCODE -eq 0) {
-              gh release upload "$env:GITHUB_REF_NAME" Equicord.bat --clobber --repo "$env:GITHUB_REPOSITORY"
+              gh release upload "$env:GITHUB_REF_NAME" @assets --clobber --repo "$env:GITHUB_REPOSITORY"
           } else {
-              gh release create "$env:GITHUB_REF_NAME" Equicord.bat --generate-notes --title "$env:GITHUB_REF_NAME" --repo "$env:GITHUB_REPOSITORY"
+              $releaseArgs = @(
+                  "release", "create", "$env:GITHUB_REF_NAME"
+              ) + $assets + @(
+                  "--generate-notes",
+                  "--title", "$env:GITHUB_REF_NAME",
+                  "--repo", "$env:GITHUB_REPOSITORY"
+              )
+              if ($env:GITHUB_REF_NAME -match '-') {
+                  $releaseArgs += "--prerelease"
+              }
+              & gh @releaseArgs
           }

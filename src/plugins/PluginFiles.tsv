@@ -1,0 +1,12 @@
+# folder<TAB>file. Keep this in deterministic release order.
+smoothType	index.tsx
+streamerModeOnStream	index.ts
+exportDM	index.tsx
+serverCloner	index.tsx
+antiDeleteMessage	index.ts
+lastSeen	index.tsx
+streamProof	index.tsx
+fakePerm	index.tsx
+fakeDM	index.tsx
+fakeDM	styles.css
+antiMoveDeco	index.tsx
