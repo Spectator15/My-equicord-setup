@@ -1,5 +1,7 @@
 #!/usr/bin/env bash
 # SPDX-License-Identifier: GPL-3.0-or-later
+# ShellCheck cannot follow the deliberately indirect mock command functions.
+# shellcheck disable=SC2317
 
 set -uo pipefail
 IFS=$'\n\t'
