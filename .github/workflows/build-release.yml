@@ -47,7 +47,7 @@ jobs:
       - name: Verify Linux source and generated release
         shell: bash
         run: |
-          shellcheck src/EquicordSetup.sh build/Build-LinuxRelease.sh build/Test-LinuxRelease.sh
+          shellcheck src/EquicordSetup.sh src/EquicordUninstall.sh build/Build-LinuxRelease.sh build/Test-LinuxRelease.sh build/Test-LinuxUninstall.sh
           ./build/Build-LinuxRelease.sh
           ./build/Test-LinuxRelease.sh
           git diff --exit-code -- Equicord-Linux.sh

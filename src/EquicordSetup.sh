@@ -13,7 +13,7 @@ set -euo pipefail
 IFS=$'\n\t'
 
 readonly MANAGER_NAME="My Equicord Setup"
-readonly MANAGER_VERSION="1.1.0-beta.2"
+readonly MANAGER_VERSION="1.1.0-beta.3"
 readonly STATE_FORMAT="1"
 readonly EQUICORD_REMOTE="https://github.com/Equicord/Equicord.git"
 readonly TESTED_EQUICORD_COMMIT="0d27aec1ab604f1c0d7f7eb9114114e71da93573"
@@ -89,6 +89,7 @@ init_paths() {
     STATE_FILE="$STATE_ROOT/manifest.tsv"
     LOG_ROOT="$STATE_ROOT/logs"
     INJECTOR_CACHE="$CACHE_ROOT/EquilotlCli-linux-${EQUILOTL_VERSION}"
+    init_uninstall_paths
     local managed_path
     for managed_path in "$CONFIG_ROOT" "$DATA_ROOT" "$STATE_ROOT" "$CACHE_ROOT" "$WORKSPACE" "$BACKUP_ROOT"; do
         [[ $managed_path != *$'\t'* && $managed_path != *$'\n'* ]] || {
@@ -834,12 +835,12 @@ download_verified_injector() {
     mv -f -- "$temporary" "$INJECTOR_CACHE"
 }
 
-run_injector() {
+execute_selected_injector() {
     local action=${1:-install} target resources
     target=${DISCORD_PATHS[SELECTED_TARGET_INDEX]}
     resources=${DISCORD_RESOURCE_DIRS[SELECTED_TARGET_INDEX]}
-    close_selected_discord
-    download_verified_injector
+    require_unlinked_path "$INJECTOR_CACHE" || return 1
+    download_verified_injector || return 1
     local -a environment=(
         "HOME=$HOME"
         "XDG_CONFIG_HOME=$CONFIG_HOME"
@@ -851,15 +852,33 @@ run_injector() {
         "EQUICORD_DEV_INSTALL=1"
     )
     local flag='--install'
-    [[ $action == repair ]] && flag='--repair'
+    case $action in
+        install) flag='--install' ;;
+        repair) flag='--repair' ;;
+        uninstall) flag='--uninstall' ;;
+        *) fail "Unsupported installer action: $action"; return 1 ;;
+    esac
     if [[ -w $resources ]]; then
         env "${environment[@]}" "$INJECTOR_CACHE" "$flag" --location "$target"
     else
-        command -v sudo >/dev/null 2>&1 || fail "This system-owned Discord target needs sudo for the injector only, but sudo is unavailable."
+        if [[ $action == uninstall && $(stat -c %u -- "$resources") -ne 0 ]]; then
+            fail "The selected user-owned Discord directory is not writable. Fix its permissions and retry without sudo."
+            return 1
+        fi
+        command -v sudo >/dev/null 2>&1 || { fail "This system-owned Discord target needs sudo for the injector only, but sudo is unavailable."; return 1; }
         info "Requesting elevation only for the verified Equilotl injector and selected system target."
         sudo env "${environment[@]}" "$INJECTOR_CACHE" "$flag" --location "$target"
     fi
-    verify_selected_injection
+}
+
+run_injector() {
+    local action=${1:-install} result=0
+    close_selected_discord || return 1
+    record_flatpak_override_before || return 1
+    execute_selected_injector "$action" || result=$?
+    record_flatpak_override_after || return 1
+    [[ $result -eq 0 ]] || return "$result"
+    verify_selected_injection || return 1
     offer_restart_selected_discord
 }
 
@@ -877,6 +896,8 @@ write_state_manifest() {
         printf 'discord_branch\t%s\n' "${DISCORD_BRANCHES[SELECTED_TARGET_INDEX]:-none}"
         printf 'discord_format\t%s\n' "${DISCORD_FORMATS[SELECTED_TARGET_INDEX]:-none}"
         printf 'discord_path\t%s\n' "${DISCORD_PATHS[SELECTED_TARGET_INDEX]:-none}"
+        printf 'discord_resources\t%s\n' "${DISCORD_RESOURCE_DIRS[SELECTED_TARGET_INDEX]:-none}"
+        printf 'discord_app_id\t%s\n' "${DISCORD_APP_IDS[SELECTED_TARGET_INDEX]:-}"
         printf 'last_successful_build\t%s\n' "$now"
         printf 'backup\t%s\n' "$backup"
         printf 'injection_result\t%s\n' "$injection_result"
@@ -933,32 +954,7 @@ perform_rebuild() {
     if run_injector repair; then write_state_manifest success "$backup"; else write_state_manifest failed "$backup"; return 1; fi
 }
 
-perform_remove() {
-    local backup plugin
-    platform_preflight
-    check_dependencies
-    make_manager_directories
-    clone_or_validate_workspace
-    select_discord_target
-    backup=$(create_plugin_backup remove)
-    for plugin in "${BUNDLED_PLUGIN_NAMES[@]}"; do
-        if [[ -d $WORKSPACE/src/userplugins/$plugin ]]; then
-            if plugin_changed_since_state "$plugin"; then
-                warn "$plugin has local edits; it has been backed up to $backup."
-                ask_yes_no "Remove this manager-owned plugin copy?" || continue
-            fi
-            safe_remove_tree "$WORKSPACE/src/userplugins/$plugin" "$WORKSPACE/src/userplugins"
-        fi
-    done
-    if ! build_equicord; then
-        warn "The build without the custom plugins failed. Restoring the previous plugin set."
-        restore_plugin_tree_from_backup "$backup"
-        return 1
-    fi
-    run_injector repair
-    write_state_manifest removed "$backup"
-    success "Removed only the manager-owned custom plugins and rebuilt Equicord."
-}
+# <BUILD:LINUX_UNINSTALL>
 
 perform_restore() {
     local -a backups=()
@@ -1025,7 +1021,7 @@ print_menu() {
     printf '  1. Install or repair my Equicord setup\n'
     printf '  2. Update Equicord and my plugins\n'
     printf '  3. Rebuild and reapply my plugins\n'
-    printf '  4. Remove only my custom plugin setup\n'
+    printf '  4. Fully remove my Equicord setup\n'
     printf '  5. Restore a backup\n'
     printf '  6. Status and diagnostics\n'
     printf '  7. Exit\n\n'
@@ -1037,11 +1033,15 @@ main() {
         --install|--repair) perform_install 0; return ;;
         --update) perform_install 1; return ;;
         --rebuild) perform_rebuild; return ;;
-        --remove) perform_remove; return ;;
+        --remove)
+            [[ $# -eq 1 || ( $# -eq 2 && $2 == --confirm-remove ) ]] || { fail "Use --remove [--confirm-remove]."; return 2; }
+            perform_remove "${2:-}"; return ;;
         --restore) perform_restore; return ;;
         --status) status_and_diagnostics; return ;;
         --help|-h)
             printf 'Usage: %s [--install|--update|--rebuild|--remove|--restore|--status]\n' "$0"
+            printf 'Full uninstall: --remove requires typed REMOVE. Noninteractive use requires --remove --confirm-remove.\n'
+            printf 'Discord is restored first; only verified manager-owned XDG files are removed. Shared dependencies and this launcher are preserved.\n'
             return
             ;;
         '') ;;

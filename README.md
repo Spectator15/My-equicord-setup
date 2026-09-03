@@ -16,7 +16,7 @@ Instead, I decided to take only the individual plugins I wanted, inspect and cle
 
 ## What the setup does
 
-The setup installs or updates an official [Equicord](https://github.com/Equicord/Equicord) source checkout, puts my bundled plugins in `src/userplugins`, builds Equicord, and applies that custom build to a selected Discord installation. It can also rebuild after plugin changes, repair the injection after Discord updates, report diagnostics, remove only the managed plugins, and restore a manager backup.
+The setup installs or updates an official [Equicord](https://github.com/Equicord/Equicord) source checkout, puts my bundled plugins in `src/userplugins`, builds Equicord, and applies that custom build to a selected Discord installation. It can also rebuild after plugin changes, repair the injection after Discord updates, report diagnostics, and fully remove the manager-owned setup. Linux also supports restoring a manager backup.
 
 **The currently bundled plugins are:**
 
@@ -58,7 +58,7 @@ Ownership, the official Git remote, exact local paths, and the worktree are chec
 
 ## Linux beta
 
-Download `Equicord-Linux.sh` from the [Linux beta release](https://github.com/Spectator15/My-equicord-setup/releases/tag/v1.1.0-beta.2), then run:
+Download `Equicord-Linux.sh` from the [Linux beta release](https://github.com/Spectator15/My-equicord-setup/releases/tag/v1.1.0-beta.3), then run:
 
 ```bash
 chmod +x Equicord-Linux.sh
@@ -74,7 +74,7 @@ The initial dependency install and source build may take several minutes and use
 1. Install or repair my Equicord setup
 2. Update Equicord and my plugins
 3. Rebuild and reapply my plugins
-4. Remove only my custom plugin setup
+4. Fully remove my Equicord setup
 5. Restore a backup
 6. Status and diagnostics
 7. Exit
@@ -88,7 +88,13 @@ The manager uses these XDG locations by default:
 | Manager configuration | `${XDG_CONFIG_HOME:-$HOME/.config}/my-equicord-setup/` |
 | Verified injector and temporary build data | `${XDG_CACHE_HOME:-$HOME/.cache}/my-equicord-setup/` |
 
-Updates validate the official Git remote, refuse dirty or diverged checkouts, and use fetch plus fast-forward behavior. Plugin deployment is staged and backed up before replacement. A failed plugin build restores the previous manager-owned source set. Removal only targets plugins recorded by this manager, preserves unrelated user plugins and themes, rebuilds Equicord, and does not uninstall Discord or Equicord.
+Updates validate the official Git remote, refuse dirty or diverged checkouts, and use fetch plus fast-forward behavior. Plugin deployment is staged and backed up before replacement. A failed plugin build restores the previous manager-owned source set.
+
+**Fully remove my Equicord setup** (or `--remove`) previews the recorded Discord target and every planned deletion, then requires typed `REMOVE`. It uses the verified official Equilotl CLI to uninject that client and checks that the exact original `app.asar` is restored before removing the manager's four XDG directories above, including the checkout, backups, configuration, logs, state, and cached injector. Only the selected client is closed when needed, and it is relaunched if it was running. Noninteractive removal requires both `MES_NONINTERACTIVE=1` and `--remove --confirm-remove`; the ordinary assume-yes setting cannot authorize it.
+
+Discord, login data, ordinary settings, shared dependencies, unrelated clients, and plugins or themes outside the manager checkout remain untouched. A dirty checkout, unknown user plugin, edited managed plugin, unexpected file, wrong owner, or unsafe path is preserved. Failed uninjection retains recovery information. Interruptions and later cleanup failures report **partial cleanup** without reinjecting; fix the reported issue and rerun `--remove`. A recorded file inventory allows interrupted deletion to resume only while the remaining files still match. The downloaded `Equicord-Linux.sh` is never self-deleted; remove it manually afterward if desired. Uninstall still needs Git, Node.js, and the checked filesystem tools, but does not need pnpm or a rebuild.
+
+For new Flatpak injections, the manager snapshots the relevant override before and after Equilotl changes it. Removal restores the previous override only when that ownership can still be proven and the current file has not changed independently. Legacy installs, interrupted permission changes, and externally modified overrides are left untouched with a warning. No broad `flatpak override --reset` is used. Restoring a provably manager-owned system override may require a narrowly scoped privilege prompt.
 
 ### Linux client support
 
@@ -106,6 +112,8 @@ The setup refuses to run as root. A verified, versioned Equilotl CLI asset is do
 
 Automated tests cover the generated release, XDG paths, paths with spaces and non-ASCII characters, safe Git updates, plugin staging and restoration, unknown-plugin preservation, native and Flatpak discovery, branch distinction, symlink deduplication, exact process targeting, root refusal, narrow mocked elevation, download failures, digest failures, deterministic generation, LF line endings, executable mode, and shell syntax.
 
+Full-uninstall validation also runs in disposable Ubuntu WSL 2 Linux-filesystem fixtures, never against a real Discord installation. It exercises native, Flatpak, and system Electron restoration layouts, typed confirmation, ownership and symlink protection, dirty-workspace preservation, partial-cleanup retry, exact disposable process closure/restart, and real SIGINT, SIGTERM, and SIGHUP both before and after restoration. The automated suite mocks injector and Flatpak writes. A separate WSL check successfully used the checksum-verified official Equilotl binary to uninject a disposable ASAR fixture and remove its manager files. None of these checks proves a graphical client works.
+
 The ten plugins are also compiled in Ubuntu CI against official Equicord commit `0d27aec1ab604f1c0d7f7eb9114114e71da93573`, with their names checked in the resulting bundle. The reviewed `streamerModeOnStream` folder collision is safe at that revision because upstream's plugin has the distinct runtime name `StreamerModeOn`, while this repository's plugin is `StreamerModeOnStream`. Any new collision, or a future loss of that distinction, stops the setup.
 
 The source build and injection structure are verified automatically. A real graphical Discord launch, plugin visibility in the settings page, Flatpak persistence after an update, and each plugin's runtime behavior have not yet been manually confirmed on Linux. That is why the Linux release is marked as a beta prerelease.
@@ -113,6 +121,8 @@ The source build and injection structure are verified automatically. A real grap
 ## Development
 
 The editable installers and plugin sources live under `src/`. Contributors should change those source files rather than editing the generated `Equicord.bat` or `Equicord-Linux.sh` directly.
+
+Linux removal and Flatpak permission bookkeeping live in `src/EquicordUninstall.sh`, which the Linux release build embeds alongside `src/EquicordSetup.sh` and the unchanged plugin payloads.
 
 To rebuild the Windows release from the repository root, use:
 
