@@ -560,7 +560,7 @@ test_invalid_download_path() {
 }
 test_build_failure_rollback_path() { grep -Fq 'Build failed. Restoring the previous manager-owned plugin tree.' "$source_file"; }
 test_successful_deployment_path() { grep -Fq 'Verified all 10 custom plugin names' "$source_file"; }
-test_removal_scope() { grep -Fq 'Removed only the manager-owned custom plugins' "$source_file"; }
+test_removal_scope() { grep -Fq '4. Fully remove my Equicord setup' "$source_file"; }
 
 run_test '1 clean manager-owned source setup' test_valid_workspace one
 run_test '2 existing valid manager-owned source workspace' test_valid_workspace two
@@ -625,4 +625,5 @@ run_test 'harmless Windows terms do not trigger heuristic' test_harmless_windows
 run_test 'process polling uses one-second sleep and skips it in tests' test_process_poll_delay
 
 printf '\nLinux release tests: %d passed, %d failed.\n' "$passes" "$failures"
-[[ $failures -eq 0 ]]
+[[ $failures -eq 0 ]] || exit 1
+bash "$script_dir/Test-LinuxUninstall.sh"

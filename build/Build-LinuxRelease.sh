@@ -7,10 +7,12 @@ IFS=$'\n\t'
 script_dir=$(CDPATH='' cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd -P)
 repo_root=$(CDPATH='' cd -- "$script_dir/.." && pwd -P)
 source_file="$repo_root/src/EquicordSetup.sh"
+uninstall_file="$repo_root/src/EquicordUninstall.sh"
 manifest_file="$repo_root/src/plugins/PluginFiles.tsv"
 plugins_root="$repo_root/src/plugins"
 output_file="$repo_root/Equicord-Linux.sh"
 payload_marker='# <BUILD:BUNDLED_PLUGIN_PAYLOAD>'
+uninstall_marker='# <BUILD:LINUX_UNINSTALL>'
 check_only=0
 
 if [[ ${1:-} == "--check" ]]; then
@@ -28,6 +30,8 @@ for command_name in base64 mktemp sha256sum; do
 done
 
 [[ -f $source_file ]] || { printf 'Missing Linux installer source: %s\n' "$source_file" >&2; exit 1; }
+[[ -f $uninstall_file ]] || { printf 'Missing Linux uninstall source: %s\n' "$uninstall_file" >&2; exit 1; }
+[[ $(grep -Fxc "$uninstall_marker" "$source_file") -eq 1 ]] || { printf 'Expected one Linux uninstall build marker.\n' >&2; exit 1; }
 [[ -f $manifest_file ]] || { printf 'Missing plugin file manifest: %s\n' "$manifest_file" >&2; exit 1; }
 
 marker_count=$(grep -Fxc "$payload_marker" "$source_file" || true)
@@ -118,7 +122,12 @@ while IFS= read -r directory; do
     }
 done < <(find "$plugins_root" -mindepth 1 -maxdepth 1 -type d -print | LC_ALL=C sort)
 
-awk -v marker="$payload_marker" -v payload="$payload_file" '
+awk -v marker="$payload_marker" -v payload="$payload_file" -v uninstall_marker="$uninstall_marker" -v uninstall="$uninstall_file" '
+    $0 == uninstall_marker {
+        while ((getline line < uninstall) > 0) print line
+        close(uninstall)
+        next
+    }
     $0 == marker {
         while ((getline line < payload) > 0) print line
         close(payload)
@@ -127,7 +136,7 @@ awk -v marker="$payload_marker" -v payload="$payload_file" '
     { print }
 ' "$source_file" > "$generated_file"
 
-if grep -Fq "$payload_marker" "$generated_file"; then
+if grep -Eq '<BUILD:(BUNDLED_PLUGIN_PAYLOAD|LINUX_UNINSTALL)>' "$generated_file"; then
     printf 'Generated Linux script contains an unresolved payload marker.\n' >&2
     exit 1
 fi
