@@ -105,6 +105,7 @@ jobs:
           path: release-assets
 
       - name: Download ready-to-run Linux installer
+        if: contains(github.ref_name, '-')
         uses: actions/download-artifact@v4
         with:
           name: Equicord-Linux-setup
@@ -115,10 +116,11 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          $assets = @(
-              "release-assets/Equicord.bat",
-              "release-assets/Equicord-Linux.sh"
-          )
+          # Stable Windows releases do not relabel the Linux beta as stable.
+          $assets = @("release-assets/Equicord.bat")
+          if ($env:GITHUB_REF_NAME -match '-') {
+              $assets += "release-assets/Equicord-Linux.sh"
+          }
           gh release view "$env:GITHUB_REF_NAME" --repo "$env:GITHUB_REPOSITORY" *> $null
           if ($LASTEXITCODE -eq 0) {
               gh release upload "$env:GITHUB_REF_NAME" @assets --clobber --repo "$env:GITHUB_REPOSITORY"
