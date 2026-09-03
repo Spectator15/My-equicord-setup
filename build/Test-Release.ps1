@@ -199,4 +199,6 @@ try {
     }
 }
 
-Write-Output "Release validation passed: 10 plugins, 11 files, valid loader, CRLF, UTF-8, parse-clean PowerShell, atomic no-change writes, safe paths, and unknown-folder preservation."
+& (Join-Path $PSScriptRoot "Test-WindowsUninstall.ps1")
+
+Write-Output "Release validation passed: 10 plugins, 11 files, valid loader, CRLF, UTF-8, parse-clean PowerShell, atomic no-change writes, safe paths, unknown-folder preservation, and Windows full-removal coverage."

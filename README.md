@@ -50,6 +50,12 @@ Normal users do not need to build or combine anything. The committed `Equicord.b
 
 On a fresh setup, the full setup option handles the Equicord installation, plugin selection, dependencies, build, and Discord injection. After that, the same script can change the selected plugins, update Equicord, rebuild it, or repair the Discord injection.
 
+To uninstall, choose **Fully remove my Equicord setup** (option 6). It shows the recorded Discord branch, exact paths, injection state, and cleanup plan, then requires you to type `REMOVE`. If an older setup has no recorded target, or that target is unavailable, you must explicitly select the correct installation. Only that client is closed when needed and relaunched if it was running.
+
+Removal uses official Equilotl uninjection first and verifies that Discord's original `app.asar` is restored before deleting the verified `Documents\Equicord` checkout and `%LOCALAPPDATA%\EquicordSetup` state, including manager logs, backups, dependency state, and cached installer files. Discord itself, account data, ordinary settings, other installations, and shared tools such as Git, Node.js, pnpm, Corepack, and PowerShell stay installed. The downloaded `Equicord.bat` is not self-deleted; delete it manually afterward if you no longer want it.
+
+Ownership, the official Git remote, exact local paths, and the worktree are checked before cleanup. Older clean setups can establish ownership only after the same typed confirmation. Local edits, untracked files, modified or unknown ignored plugins, and questionable paths are preserved. Failed uninjection keeps the workspace and recovery information. A later cleanup failure is reported as **partial cleanup**, without reinjecting Equicord. Resolve the reported content, lock, or permission issue and run the removal option again; retained ownership and stage records allow a safe retry. No real Discord installation is used by the disposable Windows uninstall tests.
+
 ## Linux beta
 
 Download `Equicord-Linux.sh` from the [Linux beta release](https://github.com/Spectator15/My-equicord-setup/releases/tag/v1.1.0-beta.2), then run:
