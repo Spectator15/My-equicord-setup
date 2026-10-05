@@ -412,7 +412,7 @@ test_missing_package_manager() {
     with_test_environment missing-package-manager
     # shellcheck disable=SC2329
     command() {
-        if [[ ${1:-} == -v && ( ${2:-} == pnpm || ${2:-} == corepack ) ]]; then return 1; fi
+        if [[ ${1:-} == -v && ( ${2:-} == pnpm || ${2:-} == corepack || ${2:-} == npm ) ]]; then return 1; fi
         builtin command "$@"
     }
     ! check_dependencies
@@ -432,6 +432,13 @@ setup_dependency_workspace() {
     clone_or_validate_workspace
 }
 
+dependency_pnpm_binary() {
+    mkdir -p "$HOME/bin"
+    printf '#!/usr/bin/env bash\nprintf "%%s\\n" %q\n' "$1" > "$HOME/bin/pnpm"
+    chmod +x "$HOME/bin/pnpm"
+    export PATH="$HOME/bin:$PATH"
+}
+
 test_clean_dependency_preflight() {
     source_release
     with_test_environment dependency-clean
@@ -439,8 +446,8 @@ test_clean_dependency_preflight() {
     # shellcheck disable=SC2329
     pgrep() { return 1; }
     check_dependencies > "$output" 2>&1 || { cat "$output" >&2; return 1; }
-    grep -Fq "exact package-manager name and version will be read from Equicord's package.json" "$output"
-    grep -Fq 'exact package-manager validation will follow source acquisition' "$output"
+    grep -Fq "exact package-manager name and version will be read from Equicord's package.json" "$output" || return 1
+    grep -Fq 'exact package-manager validation will follow source acquisition' "$output" || return 1
     [[ -z ${PACKAGE_MANAGER_COMMAND[*]-} ]]
 }
 
@@ -448,60 +455,59 @@ test_existing_checkout_dependency_preflight() {
     source_release
     setup_dependency_workspace existing
     local output="$temporary_root/dependency-existing-report.txt"
-    # shellcheck disable=SC2329
-    pnpm() { [[ ${1:-} == --version ]] && printf '11.22.0\n'; }
+    dependency_pnpm_binary 11.22.0
     check_dependencies > "$output" 2>&1 || { cat "$output" >&2; return 1; }
-    grep -Fq 'valid manager-owned Equicord checkout exists' "$output"
-    [[ ${PACKAGE_MANAGER_COMMAND[*]-} == pnpm && $PACKAGE_MANAGER_DECLARATION == pnpm@11.22.0 ]]
+    grep -Fq 'valid manager-owned Equicord checkout exists' "$output" || return 1
+    [[ ${PACKAGE_MANAGER_COMMAND[*]-} == "$HOME/bin/pnpm" && $PACKAGE_MANAGER_DECLARATION == pnpm@11.22.0 ]]
 }
 
 test_missing_corepack_with_matching_pnpm() {
     source_release
     setup_dependency_workspace no-corepack
     local output="$temporary_root/dependency-no-corepack-report.txt"
-    # shellcheck disable=SC2329
-    pnpm() { [[ ${1:-} == --version ]] && printf '11.22.0\n'; }
+    dependency_pnpm_binary 11.22.0
     # shellcheck disable=SC2329
     command() {
         if [[ ${1:-} == -v && ${2:-} == corepack ]]; then return 1; fi
         builtin command "$@"
     }
     check_dependencies > "$output" 2>&1 || { cat "$output" >&2; return 1; }
-    grep -Fq 'Corepack is unavailable; the installed pnpm must exactly match' "$output"
-    [[ ${PACKAGE_MANAGER_COMMAND[*]-} == pnpm ]]
+    grep -Fq 'Corepack is optional and unavailable' "$output" || return 1
+    [[ ${PACKAGE_MANAGER_COMMAND[*]-} == "$HOME/bin/pnpm" ]]
 }
 
 test_missing_pnpm_with_corepack() {
     source_release
     setup_dependency_workspace no-pnpm
     local output="$temporary_root/dependency-no-pnpm-report.txt"
-    # shellcheck disable=SC2329
-    corepack() {
-        [[ ${1:-} == pnpm && ${2:-} == --version ]] && printf '11.22.0\n'
-    }
+    mkdir -p "$HOME/bin"
+    printf '#!/usr/bin/env bash\nprintf "11.22.0\\n"\n' > "$HOME/bin/corepack"
+    chmod +x "$HOME/bin/corepack"
+    export PATH="$HOME/bin:$PATH"
     # shellcheck disable=SC2329
     command() {
         if [[ ${1:-} == -v && ${2:-} == pnpm ]]; then return 1; fi
         builtin command "$@"
     }
     check_dependencies > "$output" 2>&1 || { cat "$output" >&2; return 1; }
-    grep -Fq 'pnpm is not installed directly; Corepack can provide' "$output"
-    [[ ${PACKAGE_MANAGER_COMMAND[*]-} == $'corepack\npnpm' ]]
+    grep -Fq 'pnpm is not installed directly; Corepack or user-local npm can provide' "$output" || return 1
+    [[ ${PACKAGE_MANAGER_COMMAND[0]} == "$HOME/bin/corepack" && ${PACKAGE_MANAGER_COMMAND[1]} == pnpm@11.22.0 ]]
 }
 
 test_declared_pnpm_version_mismatch() {
     source_release
     setup_dependency_workspace mismatch
     local output="$temporary_root/dependency-mismatch-report.txt"
+    dependency_pnpm_binary 11.21.0
     # shellcheck disable=SC2329
-    pnpm() { [[ ${1:-} == --version ]] && printf '11.21.0\n'; }
-    # shellcheck disable=SC2329
-    command() {
-        if [[ ${1:-} == -v && ${2:-} == corepack ]]; then return 1; fi
-        builtin command "$@"
+    type() {
+        if [[ ${1:-} == -P && ( ${2:-} == corepack || ${2:-} == npm ) ]]; then return 1; fi
+        builtin type "$@"
     }
-    ! check_dependencies > "$output" 2>&1
-    grep -Fq 'Equicord declares pnpm 11.22.0, but pnpm 11.21.0 is active and Corepack is unavailable' "$output" || {
+    # Preflight is read-only; only final resolution fails when neither provisioner exists.
+    check_dependencies > "$output" 2>&1 || return 1
+    if select_upstream_package_manager >> "$output" 2>&1; then return 1; fi
+    grep -Fq 'Unable to obtain pnpm@11.22.0. PATH pnpm: 11.21.0' "$output" || {
         cat "$output" >&2
         return 1
     }
@@ -626,4 +632,5 @@ run_test 'process polling uses one-second sleep and skips it in tests' test_proc
 
 printf '\nLinux release tests: %d passed, %d failed.\n' "$passes" "$failures"
 [[ $failures -eq 0 ]] || exit 1
+bash "$script_dir/Test-LinuxPackageManager.sh" || exit 1
 bash "$script_dir/Test-LinuxUninstall.sh"

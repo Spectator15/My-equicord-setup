@@ -67,7 +67,9 @@ chmod +x Equicord-Linux.sh
 
 Normal users only need that one release script. It contains the bundled plugin sources and does not require PowerShell or a separate copy of this repository.
 
-Equicord user plugins must be compiled from source, so the Linux setup cannot use a normal prebuilt Equicord package on its own. The initial setup needs Git, `curl`, core build utilities, Node.js 22 or newer, and the `pnpm` version declared by the checked-out Equicord `package.json`. Corepack can provide that declared `pnpm` version. The script checks these requirements before changing the setup and prints distribution-specific package guidance, but it does not install system packages automatically.
+Equicord user plugins must be compiled from source, so the Linux setup cannot use a normal prebuilt Equicord package on its own. The initial setup needs Git, `curl`, core build utilities, Node.js 22 or newer, and npm or optional Corepack to obtain the `pnpm` version declared by the checked-out Equicord `package.json`. An already-installed exact version is also enough. The script checks prerequisites and prints distribution-specific package guidance, but it does not install system packages automatically.
+
+A newer or older distro `pnpm` is left untouched. After acquiring or updating Equicord's source, the setup reuses the exact declared version when available, otherwise tries Corepack's `install --global` and older `prepare --activate` commands. If Corepack is missing or unusable, it automatically uses `npm install --global --prefix "$HOME/.local"` for that exact version. This fallback needs network access and a safe, user-owned destination. It does not use `sudo`, change npm's permanent prefix, or edit shell profiles. Install and build commands use the verified executable directly, and reruns reuse it when its version still matches. Status shows the required version, PATH version, selected method, and executable without provisioning anything. These user-local shared tools remain installed after full setup removal.
 
 The initial dependency install and source build may take several minutes and use additional disk space. The Linux menu provides:
 
@@ -111,6 +113,8 @@ The setup refuses to run as root. A verified, versioned Equilotl CLI asset is do
 ### Linux validation status
 
 Automated tests cover the generated release, XDG paths, paths with spaces and non-ASCII characters, safe Git updates, plugin staging and restoration, unknown-plugin preservation, native and Flatpak discovery, branch distinction, symlink deduplication, exact process targeting, root refusal, narrow mocked elevation, download failures, digest failures, deterministic generation, LF line endings, executable mode, and shell syntax.
+
+Package-manager fixtures also cover exact-version reuse, distro-version mismatches, modern and legacy Corepack, npm fallback, PATH precedence, command caching, repeat runs, changed upstream requirements, and failure diagnostics. Ubuntu/Debian, CachyOS/Arch, Fedora, openSUSE, and unknown-distribution guidance use the same version-resolution path. These are isolated fixtures, not claims of real-machine testing on each distribution.
 
 Full-uninstall validation also runs in disposable Ubuntu WSL 2 Linux-filesystem fixtures, never against a real Discord installation. It exercises native, Flatpak, and system Electron restoration layouts, typed confirmation, ownership and symlink protection, dirty-workspace preservation, partial-cleanup retry, exact disposable process closure/restart, and real SIGINT, SIGTERM, and SIGHUP both before and after restoration. The automated suite mocks injector and Flatpak writes. A separate WSL check successfully used the checksum-verified official Equilotl binary to uninject a disposable ASAR fixture and remove its manager files. None of these checks proves a graphical client works.
 

@@ -258,23 +258,28 @@ distribution_name() {
 }
 
 print_dependency_install_help() {
-    local id_like=''
-    [[ -r /etc/os-release ]] && id_like=$(awk -F= '$1 == "ID" || $1 == "ID_LIKE" {gsub(/"/, "", $2); printf "%s ", $2}' /etc/os-release)
+    local id_like='' os_release=/etc/os-release
+    if [[ ${MES_TEST_MODE:-0} == 1 && -n ${MES_TEST_OS_RELEASE:-} ]]; then os_release=$MES_TEST_OS_RELEASE; fi
+    [[ -r $os_release ]] && id_like=$(awk -F= '$1 == "ID" || $1 == "ID_LIKE" {gsub(/"/, "", $2); printf "%s ", $2}' "$os_release")
     case " $id_like " in
         *" debian "*|*" ubuntu "*)
             printf 'Install base tools with: sudo apt update && sudo apt install git curl coreutils build-essential procps\n' >&2
+            printf 'Node/npm prerequisites: sudo apt install nodejs npm (check that the available Node.js version is 22 or newer).\n' >&2
             ;;
         *" fedora "*|*" rhel "*)
             printf 'Install base tools with: sudo dnf install git curl coreutils gcc-c++ make procps-ng\n' >&2
+            printf 'Node/npm prerequisites: sudo dnf install nodejs npm (Node.js 22 or newer).\n' >&2
             ;;
-        *" arch "*)
+        *" arch "*|*" cachyos "*)
             printf 'Install base tools with: sudo pacman -S --needed git curl coreutils base-devel procps-ng\n' >&2
+            printf 'Node/npm prerequisites: sudo pacman -S --needed nodejs npm (or choose a current Node.js LTS package, version 22 or newer).\n' >&2
             ;;
-        *" suse "*)
+        *" suse "*|*" opensuse "*|*" opensuse-tumbleweed "*|*" opensuse-leap "*)
             printf 'Install base tools with: sudo zypper install git curl coreutils gcc-c++ make procps\n' >&2
+            printf 'Node/npm prerequisites: sudo zypper install nodejs22 npm22 (or a newer matching LTS pair).\n' >&2
             ;;
         *)
-            printf 'Install Git, curl, coreutils, a C/C++ build toolchain, Node.js 22 or newer, and pnpm/Corepack, then rerun this script.\n' >&2
+            printf 'Install Git, curl, coreutils, a C/C++ build toolchain, and Node.js 22 or newer with npm from a trusted source, then rerun this script.\n' >&2
             ;;
     esac
     printf 'Install a current Node.js LTS release from a trusted distribution source. Equicord currently requires Node.js 22 or newer.\n' >&2
@@ -306,12 +311,12 @@ check_dependencies() {
         fi
     fi
 
-    if [[ $has_pnpm -eq 0 && $has_corepack -eq 0 ]]; then
-        errors+=("Neither pnpm nor Corepack is available to run Equicord's declared package manager")
-    elif [[ $has_pnpm -eq 0 ]]; then
-        notes+=("pnpm is not installed directly; Corepack can provide the exact upstream-declared version after confirmation")
+    if [[ $has_pnpm -eq 0 && $has_corepack -eq 0 && $has_npm -eq 0 && ! -x $HOME/.local/bin/pnpm ]]; then
+        errors+=("No pnpm, Corepack, or npm is available; install Node.js with npm to obtain Equicord's declared package manager")
     elif [[ $has_corepack -eq 0 ]]; then
-        notes+=("Corepack is unavailable; the installed pnpm must exactly match the upstream declaration")
+        notes+=("Corepack is optional and unavailable; npm can provision the exact upstream version in user space if needed, leaving distro pnpm untouched")
+    elif [[ $has_pnpm -eq 0 ]]; then
+        notes+=("pnpm is not installed directly; Corepack or user-local npm can provide the exact upstream-declared version")
     fi
     if [[ $has_npm -eq 0 ]]; then
         notes+=("npm is unavailable; it is not needed when Corepack or an exact matching pnpm can satisfy upstream")
@@ -334,8 +339,9 @@ check_dependencies() {
     fi
 
     if workspace_is_valid_for_dependency_check; then
-        info "A valid manager-owned Equicord checkout exists, so its declared package manager will be validated now."
-        select_upstream_package_manager
+        info "A valid manager-owned Equicord checkout exists; checking its current declaration without provisioning."
+        # Updates may change the declaration. Only provision after source acquisition/update.
+        select_upstream_package_manager 0
     else
         info "No valid existing manager workspace is available yet; exact package-manager validation will follow source acquisition."
     fi
@@ -343,49 +349,163 @@ check_dependencies() {
 
 declare -a PACKAGE_MANAGER_COMMAND=()
 PACKAGE_MANAGER_DECLARATION=''
-select_upstream_package_manager() {
-    local declaration manager required_version available_version
-    declaration=$(node -e 'const p=require(process.argv[1]); process.stdout.write(p.packageManager || "")' "$WORKSPACE/package.json")
-    if [[ $declaration == "$PACKAGE_MANAGER_DECLARATION" && ${#PACKAGE_MANAGER_COMMAND[@]} -gt 0 ]]; then
-        return 0
+PACKAGE_MANAGER_METHOD=''
+
+read_package_manager_declaration() {
+    node - "$WORKSPACE/package.json" <<'__MES_PACKAGE_MANAGER__'
+const fs = require("node:fs");
+function fail(message) { console.error(`[ERROR] ${message}`); process.exit(1); }
+let project;
+try { project = JSON.parse(fs.readFileSync(process.argv[2], "utf8")); }
+catch { fail("Cannot read Equicord package.json as JSON."); }
+const value = project?.packageManager;
+if (value === undefined || value === null || value === "") fail("Missing Equicord packageManager declaration.");
+// Accept an exact registry version, never a range, URL, tag, or command fragment.
+const match = typeof value === "string" && value.match(
+    /^([a-z][a-z0-9-]*)@((?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)(?:-[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?)$/
+);
+if (!match) fail("Malformed Equicord packageManager declaration; expected name@exact-version.");
+if (match[1] !== "pnpm") fail(`Unsupported Equicord package manager: ${match[1]}. Only pnpm is supported.`);
+process.stdout.write(`${match[1]}\t${match[2]}\t${value}\n`);
+__MES_PACKAGE_MANAGER__
+}
+
+package_manager_version() {
+    # A probe must not trigger Corepack downloads or pnpm's own version management.
+    (cd "$WORKSPACE" && COREPACK_ENABLE_NETWORK=0 COREPACK_ENABLE_DOWNLOAD_PROMPT=0 \
+        npm_config_manage_package_manager_versions=false "$@" --version) 2>/dev/null
+}
+
+validate_user_pnpm_prefix() {
+    local prefix="$HOME/.local" path link resolved uid
+    uid=$(id -u)
+    [[ $uid -ne 0 ]] || { fail "Package-manager provisioning must not run as root."; return 1; }
+    for path in "$HOME" "$prefix" "$prefix/bin" "$prefix/lib" "$prefix/lib/node_modules" "$prefix/lib/node_modules/pnpm"; do
+        require_unlinked_path "$path" || return 1
+        if [[ -e $path ]]; then
+            [[ -d $path && $(stat -c %u -- "$path") == "$uid" ]] || { fail "Unsafe user-local package directory: $path"; return 1; }
+            [[ -z $(find "$path" -maxdepth 0 -perm /022 -print) ]] || { fail "User-local package directory is writable by other users: $path"; return 1; }
+        fi
+    done
+    path="$prefix/lib/node_modules/pnpm"
+    if [[ -d $path && -n $(find -P "$path" \( -type l -o ! -uid "$uid" -o -perm /022 \) -print -quit) ]]; then
+        fail "The existing user-local pnpm tree has linked, foreign-owned, or broadly writable contents. It was not changed."
+        return 1
     fi
+    for link in "$prefix/bin/pnpm" "$prefix/bin/pnpx"; do
+        [[ -e $link || -L $link ]] || continue
+        resolved=$(realpath -e -- "$link") || return 1
+        [[ -L $link && $resolved == "$path/"* ]] || { fail "Refusing to overwrite a non-npm or externally linked executable: $link"; return 1; }
+        require_unlinked_path "$resolved" || return 1
+    done
+}
+
+print_package_manager_status() {
+    printf 'Equicord package manager : %s\nRequired version         : %s\n' "$manager" "$required_version"
+    printf 'PATH pnpm version        : %s\nProvisioning method      : %s\n' "$system_version" "${PACKAGE_MANAGER_METHOD:-not selected}"
+    printf 'Active version           : %s\nExecutable               : %s\n' "${available_version:-unavailable}" "${PACKAGE_MANAGER_COMMAND[0]:-none}"
+    if ((${#PACKAGE_MANAGER_COMMAND[@]} > 1)); then printf 'Pinned command argument  : %s\n' "${PACKAGE_MANAGER_COMMAND[1]}"; fi
+}
+
+try_package_manager_candidate() {
+    # These observations belong to the active select_upstream_package_manager call.
+    local method=$1
+    shift
+    observed_executable=$1
+    available_version=$(package_manager_version "$@" || printf unavailable)
+    [[ $available_version == "$required_version" ]] || return 1
+    PACKAGE_MANAGER_COMMAND=("$@")
+    PACKAGE_MANAGER_METHOD=$method
+}
+
+select_upstream_package_manager() {
+    local provision=${1:-1} parsed declaration manager required_version available_version=''
+    local system_bin system_version='missing' corepack_bin npm_bin local_bin="$HOME/.local/bin/pnpm"
+    local observed_executable='none'
+    local modern='not attempted' legacy='not attempted' npm_attempt='not attempted'
     PACKAGE_MANAGER_COMMAND=()
     PACKAGE_MANAGER_DECLARATION=''
-    manager=${declaration%@*}
-    required_version=${declaration##*@}
-    [[ $manager == "pnpm" && -n $required_version && $required_version != "$declaration" ]] || {
-        fail "Unsupported or missing upstream packageManager declaration: $declaration"
-        return 1
-    }
-    if command -v pnpm >/dev/null 2>&1; then
-        available_version=$(pnpm --version)
-        if [[ $available_version == "$required_version" ]]; then
-            PACKAGE_MANAGER_COMMAND=(pnpm)
-        elif command -v corepack >/dev/null 2>&1; then
-            ask_yes_no "Use Corepack to obtain Equicord's declared pnpm $required_version if needed?" || return 1
-            PACKAGE_MANAGER_COMMAND=(corepack pnpm)
-            available_version=$(cd "$WORKSPACE" && corepack pnpm --version)
-        else
-            fail "Equicord declares pnpm $required_version, but pnpm $available_version is active and Corepack is unavailable."
-            return 1
-        fi
-    elif command -v corepack >/dev/null 2>&1; then
-        ask_yes_no "Use Corepack to obtain Equicord's declared pnpm $required_version if needed?" || return 1
-        PACKAGE_MANAGER_COMMAND=(corepack pnpm)
-        available_version=$(cd "$WORKSPACE" && corepack pnpm --version)
+    PACKAGE_MANAGER_METHOD=''
+    parsed=$(read_package_manager_declaration) || return 1
+    IFS=$'\t' read -r manager required_version declaration <<< "$parsed"
+    # Ignore Bash's command hash and shell functions; retain an absolute executable.
+    hash -r
+    system_bin=$(type -P "$manager" || true)
+    corepack_bin=$(type -P corepack || true)
+    npm_bin=$(type -P npm || true)
+    [[ -z $system_bin ]] || system_bin=$(realpath -ms -- "$system_bin")
+    [[ -z $corepack_bin ]] || corepack_bin=$(realpath -ms -- "$corepack_bin")
+    [[ -z $npm_bin ]] || npm_bin=$(realpath -ms -- "$npm_bin")
+    [[ -z $system_bin ]] || system_version=$(package_manager_version "$system_bin" || printf 'unusable')
+    if [[ $system_version == "$required_version" ]]; then
+        PACKAGE_MANAGER_COMMAND=("$system_bin")
+        PACKAGE_MANAGER_METHOD='already correct'
+    elif [[ -x $local_bin ]] && validate_user_pnpm_prefix && try_package_manager_candidate 'user-local npm (reused)' "$local_bin"; then
+        :
+    elif [[ -n $corepack_bin ]] && try_package_manager_candidate 'Corepack (cached)' "$corepack_bin" "$declaration"; then
+        :
+    elif [[ $provision == 0 ]]; then
+        PACKAGE_MANAGER_METHOD='provisioning deferred until source acquisition/update'
+        available_version=''
+        print_package_manager_status
+        return 0
     else
-        fail "Equicord declares pnpm $required_version, but neither pnpm nor Corepack is available."
+        [[ $(id -u) -ne 0 ]] || { fail "Package-manager provisioning must not run as root."; return 1; }
+        info "Obtaining $declaration for Equicord without changing distro pnpm or shell profiles."
+        if [[ -n $corepack_bin ]]; then
+            modern='failed'
+            if (cd "$WORKSPACE" && COREPACK_ENABLE_DOWNLOAD_PROMPT=0 "$corepack_bin" install --global "$declaration"); then
+                modern='command succeeded'
+                try_package_manager_candidate 'Corepack (install --global)' "$corepack_bin" "$declaration" || true
+            fi
+            if ((${#PACKAGE_MANAGER_COMMAND[@]} == 0)); then
+                legacy='failed'
+                if (cd "$WORKSPACE" && COREPACK_ENABLE_DOWNLOAD_PROMPT=0 "$corepack_bin" prepare "$declaration" --activate); then
+                    legacy='command succeeded'
+                    try_package_manager_candidate 'Corepack (prepare --activate)' "$corepack_bin" "$declaration" || true
+                fi
+            fi
+        fi
+        if ((${#PACKAGE_MANAGER_COMMAND[@]} == 0)) && [[ -n $npm_bin ]]; then
+            npm_attempt='unsafe destination'
+            if validate_user_pnpm_prefix; then
+                npm_attempt='failed'
+                # Command-specific prefix only; never enable system shims or change npm config.
+                if (umask 022; cd "$HOME" && "$npm_bin" install --global --prefix "$HOME/.local" "$declaration"); then
+                    npm_attempt='command succeeded'
+                    hash -r
+                    if validate_user_pnpm_prefix; then
+                        try_package_manager_candidate 'user-local npm' "$local_bin" || true
+                    fi
+                fi
+            fi
+        fi
+    fi
+
+    if ((${#PACKAGE_MANAGER_COMMAND[@]})); then
+        observed_executable=${PACKAGE_MANAGER_COMMAND[0]}
+        available_version=$(package_manager_version "${PACKAGE_MANAGER_COMMAND[@]}" || true)
+    fi
+    if ((${#PACKAGE_MANAGER_COMMAND[@]} == 0)) || [[ $available_version != "$required_version" ]]; then
+        warn "Unable to obtain $declaration. PATH pnpm: $system_version; Corepack: ${corepack_bin:-unavailable}; npm: ${npm_bin:-unavailable}."
+        warn "Modern Corepack: $modern; legacy Corepack: $legacy; npm fallback: $npm_attempt."
+        warn "Last executable checked: $observed_executable; version: ${available_version:-unavailable}."
+        PACKAGE_MANAGER_COMMAND=()
+        print_dependency_install_help
+        fail "The exact upstream package manager could not be executed. Check the provisioning errors above, network/registry access, and user-directory permissions. No distro package was changed."
         return 1
     fi
-    [[ $available_version == "$required_version" ]] || {
-        fail "Equicord declares pnpm $required_version, but pnpm $available_version is active."
-        return 1
-    }
+    if [[ ${PACKAGE_MANAGER_COMMAND[0]} == "$local_bin" ]]; then
+        [[ ${PATH%%:*} == "$HOME/.local/bin" ]] || export PATH="$HOME/.local/bin:$PATH"
+        hash -r
+    fi
     PACKAGE_MANAGER_DECLARATION=$declaration
-    info "Using pnpm $available_version from Equicord's packageManager declaration ($declaration)."
+    info "Resolved Equicord packageManager: $PACKAGE_MANAGER_DECLARATION"
+    print_package_manager_status
 }
 
 install_upstream_dependencies() {
+    ((${#PACKAGE_MANAGER_COMMAND[@]})) || { fail "No verified Equicord package manager is selected."; return 1; }
     local -a install_args=(install)
     if [[ -f $WORKSPACE/pnpm-lock.yaml ]]; then
         if grep -Fq 'pnpm install --frozen-lockfile' "$WORKSPACE/README.md"; then
@@ -574,7 +694,7 @@ verify_plugin_bundle() {
 }
 
 build_equicord() {
-    select_upstream_package_manager
+    select_upstream_package_manager || return 1
     [[ -d $WORKSPACE/node_modules ]] || install_upstream_dependencies
     info "Building Equicord from source."
     if ! (cd "$WORKSPACE" && "${PACKAGE_MANAGER_COMMAND[@]}" build); then
@@ -921,7 +1041,7 @@ perform_install() {
     make_manager_directories
     clone_or_validate_workspace
     [[ $update_source -eq 0 ]] || update_workspace_fast_forward
-    select_upstream_package_manager
+    select_upstream_package_manager || return 1
     install_upstream_dependencies
     select_discord_target
     if ! backup=$(deploy_bundled_plugins); then return 1; fi
@@ -1000,6 +1120,9 @@ status_and_diagnostics() {
     fi
     command -v node >/dev/null 2>&1 && printf 'Node.js: %s\n' "$(node --version)" || printf 'Node.js: missing\n'
     command -v git >/dev/null 2>&1 && printf 'Git: %s\n' "$(git --version)" || printf 'Git: missing\n'
+    if command -v node >/dev/null 2>&1 && workspace_is_valid_for_dependency_check; then
+        select_upstream_package_manager 0 || true
+    fi
     [[ -f $STATE_FILE ]] && printf 'Last build: %s\nInjection result: %s\n' "$(state_value last_successful_build || true)" "$(state_value injection_result || true)"
 }
 
