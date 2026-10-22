@@ -62,7 +62,7 @@ jobs:
       - name: Compile bundled plugins against tested upstream Equicord
         shell: bash
         env:
-          TESTED_EQUICORD_COMMIT: 0d27aec1ab604f1c0d7f7eb9114114e71da93573
+          TESTED_EQUICORD_COMMIT: c3167a0306c125a83cff83aa200238d339ecf2a3
         run: |
           git clone --filter=blob:none https://github.com/Equicord/Equicord.git "$RUNNER_TEMP/Equicord"
           git -C "$RUNNER_TEMP/Equicord" checkout --detach "$TESTED_EQUICORD_COMMIT"
@@ -72,10 +72,10 @@ jobs:
             mkdir -p "$RUNNER_TEMP/Equicord/src/userplugins/$folder"
             cp "src/plugins/$folder/$file" "$RUNNER_TEMP/Equicord/src/userplugins/$folder/$file"
           done < src/plugins/PluginFiles.tsv
-          corepack enable
           package_manager=$(node -p "require('$RUNNER_TEMP/Equicord/package.json').packageManager")
           package_version=${package_manager#pnpm@}
-          corepack prepare "pnpm@$package_version" --activate
+          # Corepack bundled with Node 22 cannot unpack pnpm 12, so install the exact version with npm.
+          npm install --global "pnpm@$package_version"
           pnpm --dir "$RUNNER_TEMP/Equicord" install --frozen-lockfile
           pnpm --dir "$RUNNER_TEMP/Equicord" build
           for plugin in SmoothType StreamerModeOnStream ExportDM ServerCloner AntiDeleteMessage LastSeen StreamProof FakePerm FakeDM AntiMoveDeco; do
