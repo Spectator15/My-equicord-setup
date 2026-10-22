@@ -948,6 +948,77 @@ function Write-PluginApplySummary {
     Write-Host ($(if ($Summary.InjectPerformed) { "yes" } else { "no" }))
 }
 
+function New-AllPluginSelection {
+    $selection = @{}
+    foreach ($plugin in Get-BundledPlugins) { $selection[$plugin.Id] = $true }
+    return $selection
+}
+
+# Accepts "3", "1 4 7", "1,4,7" or ranges like "2-5". Returns $null when anything is not a valid plugin number.
+function ConvertTo-PluginIndexes {
+    param([string]$Text, [int]$Count)
+    $indexes = New-Object System.Collections.ArrayList
+    foreach ($token in @($Text -split '[\s,]+' | Where-Object { $_ })) {
+        if ($token -match '^(\d+)-(\d+)$') {
+            $from = [int]$Matches[1]; $to = [int]$Matches[2]
+            if ($from -gt $to) { $from, $to = $to, $from }
+        } elseif ($token -match '^\d+$') {
+            $from = [int]$token; $to = $from
+        } else {
+            return $null
+        }
+        if ($from -lt 1 -or $to -gt $Count) { return $null }
+        foreach ($i in $from..$to) { [void]$indexes.Add($i) }
+    }
+    if ($indexes.Count -eq 0) { return $null }
+    return ,@($indexes)
+}
+
+function Show-PluginPicker {
+    param([string]$PluginsDir)
+    $plugins = @(Get-BundledPlugins)
+    $selection = Get-PreferredSelection -PluginsDir $PluginsDir
+    $notice = ""
+
+    while ($true) {
+        Clear-Host
+        Write-Header "Choose Plugins"
+        Write-Info "Ticked plugins are installed when you apply. Unticked bundled plugins are removed."
+        Write-Info "Unknown folders in src\userplugins are never touched."
+        Write-Host ""
+        for ($i = 0; $i -lt $plugins.Count; $i++) {
+            $plugin = $plugins[$i]
+            $ticked = [bool]$selection[$plugin.Id]
+            $installed = Test-BundledPluginInstalled -Plugin $plugin -PluginsDir $PluginsDir
+            $mark = if ($ticked) { "[x]" } else { "[ ]" }
+            $state = if ($installed) { "installed" } else { "" }
+            $num = ($i + 1).ToString().PadLeft(2)
+            Write-Host ("  {0}. {1} {2,-22} {3}" -f $num, $mark, $plugin.DisplayName, $state) -ForegroundColor $(if ($ticked) { "White" } else { "Gray" })
+            Write-Host ("      " + $plugin.Description) -ForegroundColor DarkGray
+        }
+        Write-Section "Type numbers to tick or untick (e.g. 1 4 7 or 2-5)"
+        Write-MenuItem "A" "Tick all"
+        Write-MenuItem "N" "Untick all"
+        Write-MenuItem "Enter" "Apply"
+        Write-MenuItem "B" "Back"
+        Write-Host $LINE -ForegroundColor Cyan
+        if ($notice) { Write-Warn $notice; $notice = "" }
+
+        $choice = (Read-ChoiceText).ToLower()
+        if ($choice -eq "") { return $selection }
+        if ($choice -eq "b") { return $null }
+        if ($choice -eq "a") { foreach ($p in $plugins) { $selection[$p.Id] = $true }; continue }
+        if ($choice -eq "n") { foreach ($p in $plugins) { $selection[$p.Id] = $false }; continue }
+
+        $indexes = ConvertTo-PluginIndexes -Text $choice -Count $plugins.Count
+        if (-not $indexes) { $notice = "Type plugin numbers from 1 to $($plugins.Count), or A, N, B, or just Enter."; continue }
+        foreach ($idx in $indexes) {
+            $id = $plugins[$idx - 1].Id
+            $selection[$id] = -not [bool]$selection[$id]
+        }
+    }
+}
+
 function Show-PluginManager {
     param([switch]$DuringSetup)
     $equicord = $script:EquicordDir
@@ -958,62 +1029,34 @@ function Show-PluginManager {
     }
 
     $pluginsDir = Get-PluginsDir $equicord
-    $selection = Get-PreferredSelection -PluginsDir $pluginsDir
-    $forceBuild = $false
-
     while ($true) {
         Clear-Host
-        Write-Header "Custom Plugin Manager"
-        Write-Info "Selected plugins are the desired state. Unselected bundled plugins will be removed after confirmation."
-        Write-Info "Unknown folders in src\userplugins are preserved."
-        Write-Host ""
-        $plugins = @(Get-BundledPlugins)
-        for ($i = 0; $i -lt $plugins.Count; $i++) {
-            $plugin = $plugins[$i]
-            $installed = Test-BundledPluginInstalled -Plugin $plugin -PluginsDir $pluginsDir
-            $selText = if ($selection[$plugin.Id]) { "[x]" } else { "[ ]" }
-            $state = if ($installed) { "installed" } else { "not installed" }
-            $num = ($i + 1).ToString().PadLeft(2)
-            Write-Host ("  {0}. {1} {2,-22} {3}" -f $num, $selText, $plugin.DisplayName, $state) -ForegroundColor White
-            Write-Host ("      " + $plugin.Description) -ForegroundColor DarkGray
-        }
-        Write-Section "Actions"
-        Write-MenuItem "1-10" "Toggle a plugin"
-        Write-MenuItem "A" "Select all bundled plugins"
-        Write-MenuItem "N" "Select none"
-        Write-MenuItem "D" "Restore recommended defaults"
-        Write-MenuItem "F" ("Force rebuild after apply: " + $(if ($forceBuild) { "on" } else { "off" }))
-        Write-MenuItem "P" $(if ($DuringSetup) { "Apply and continue setup" } else { "Apply selected configuration" })
-        Write-MenuItem "C" "Cancel without changing anything"
+        Write-Header "Custom Plugins"
+        $total = @(Get-BundledPlugins).Count
+        $installedCount = @(Get-InstalledBundledPluginIds -PluginsDir $pluginsDir).Count
+        Write-Info ("{0} of {1} bundled plugins are currently installed." -f $installedCount, $total)
+        Write-Section "What do you want to do?"
+        Write-MenuItem "1" "Install all plugins"
+        Write-MenuItem "2" "Choose specific plugins"
+        if (-not $DuringSetup) { Write-MenuItem "3" "Update Equicord and rebuild everything" }
+        Write-MenuItem "C" "Cancel"
         Write-Host $LINE -ForegroundColor Cyan
 
-        $choice = (Read-ChoiceText).ToLower()
-        if ($choice -match "^\d+$") {
-            $idx = [int]$choice
-            if ($idx -ge 1 -and $idx -le $plugins.Count) {
-                $id = $plugins[$idx - 1].Id
-                $selection[$id] = -not [bool]$selection[$id]
-            }
-            continue
+        $choice = Get-KeyChoice
+        $selection = $null
+        if ($choice -eq "1") { $selection = New-AllPluginSelection }
+        elseif ($choice -eq "2") { $selection = Show-PluginPicker -PluginsDir $pluginsDir }
+        elseif ($choice -eq "3" -and -not $DuringSetup) { return [pscustomobject]@{ RebuildEverything = $true } }
+        elseif ($choice -eq "c") { Write-Info "No plugin changes were made."; return $null }
+        if (-not $selection) { continue }
+
+        $summary = Apply-BundledPluginSelection -Selection $selection
+        if ($summary.Cancelled) {
+            Write-Warn "Plugin changes were cancelled before any removal."
+            Pause-Return
+            return $null
         }
-        switch ($choice) {
-            "a" { foreach ($p in $plugins) { $selection[$p.Id] = $true } }
-            "n" { foreach ($p in $plugins) { $selection[$p.Id] = $false } }
-            "d" { foreach ($p in $plugins) { $selection[$p.Id] = [bool]$p.DefaultSelected } }
-            "f" { $forceBuild = -not $forceBuild }
-            "c" { Write-Info "No plugin changes were made."; return $null }
-            "p" {
-                $summary = Apply-BundledPluginSelection -Selection $selection
-                if ($summary.Cancelled) {
-                    Write-Warn "Plugin changes were cancelled before any removal."
-                    Pause-Return
-                    return $null
-                }
-                $summary | Add-Member -NotePropertyName ForceBuild -NotePropertyValue $forceBuild -Force
-                Write-PluginApplySummary -Summary $summary
-                return $summary
-            }
-        }
+        return $summary
     }
 }
 #endregion
@@ -2176,49 +2219,60 @@ function Run-ManagePlugins {
     if (Test-IsAdministrator) { Write-Err "Close this and run it normally, not as Administrator."; Pause-Return; return }
     $summary = Show-PluginManager
     if (-not $summary) { return }
-    if ($summary.Failed.Count) { Write-Err "One or more plugin changes failed. Build was skipped."; Pause-Return; return }
+    if ($summary.PSObject.Properties["RebuildEverything"]) { Run-RebuildEverything -SkipIntro; return }
+    if ($summary.Failed.Count) { Write-PluginApplySummary -Summary $summary; Write-Err "One or more plugin changes failed. Build was skipped."; Pause-Return; return }
 
     try {
-        $force = [bool]$summary.ForceBuild
-        if ($summary.FilesChanged -or $force) {
+        if ($summary.FilesChanged) {
             if (-not (Ensure-DevTools)) { Pause-Return; return }
-            if (Get-Confirm "Build Equicord now?") {
-                Install-EquicordDependencies
-                Invoke-EquicordBuild
-                $summary.BuildPerformed = $true
-                if (Get-Confirm "Run repair/reinject now?") {
-                    if (Invoke-EquicordInject -Repair) { $summary.InjectPerformed = $true }
-                }
-            } else {
-                Write-Warn "Plugin files changed. Build later before expecting Discord to show the new selection."
-            }
-        } else {
-            Write-Success "No plugin files changed, so build and injection were skipped."
+            Install-EquicordDependencies
+            Invoke-EquicordBuild
+            $summary.BuildPerformed = $true
         }
         Write-PluginApplySummary -Summary $summary
+        if ($summary.BuildPerformed) { Write-Success "Done. Restart Discord to load your plugin selection." }
+        else { Write-Success "Nothing changed, so no rebuild was needed." }
     } catch {
         Write-Err $_.Exception.Message
     }
     Pause-Return
 }
 
-function Run-UpdateEquicord {
+# One-stop refresh after Equicord ships an update: pull, rewrite the saved plugin selection, clean dependency install, full build.
+# Discord is only reinjected when it has lost Equicord (usually after a Discord update), so a normal run never closes it.
+function Run-RebuildEverything {
+    param([switch]$SkipIntro)
     Clear-Host
-    Write-Header "Update Equicord and Rebuild"
-    Write-Info "Updates Equicord with a fast-forward Git pull, preserves userplugins, then rebuilds."
-    Write-Info "Reinjection is separate; use Repair/reinject if Discord is no longer patched."
-    Write-Host ""
-    if (-not (Get-Confirm "Ready to update and rebuild?")) { return }
+    Write-Header "Update Equicord and Rebuild Everything"
+    if (-not $SkipIntro) {
+        Write-Info "Pulls the latest Equicord from GitHub, rewrites your selected plugins,"
+        Write-Info "reinstalls dependencies, and does a full rebuild."
+        Write-Info "Discord is reinjected only if it has lost Equicord."
+        Write-Host ""
+        if (-not (Get-Confirm "Ready?")) { return }
+    }
     if (Test-IsAdministrator) { Write-Err "Close this and run it normally, not as Administrator."; Pause-Return; return }
     try {
         if (-not (Ensure-DevTools)) { Pause-Return; return }
-        $changed = Ensure-EquicordSource -UpdateExisting
-        if (-not $changed) {
-            if (-not (Get-Confirm "No source update was found. Rebuild anyway?")) { Pause-Return; return }
-        }
-        Install-EquicordDependencies
+        if (-not (Test-EquicordRepo $script:EquicordDir)) { throw "Equicord folder not found. Run Full Equicord setup first." }
+        Ensure-EquicordSource -UpdateExisting | Out-Null
+
+        $pluginsDir = Get-PluginsDir $script:EquicordDir
+        $summary = Apply-BundledPluginSelection -Selection (Get-PreferredSelection -PluginsDir $pluginsDir)
+        if ($summary.Cancelled) { Write-Warn "Rebuild cancelled before any plugin was removed."; Pause-Return; return }
+        if ($summary.Failed.Count) { Write-PluginApplySummary -Summary $summary; throw "One or more plugins could not be written, so the rebuild was skipped." }
+
+        Install-EquicordDependencies -Force
         Invoke-EquicordBuild
-        Write-Success "Update/rebuild complete. Restart Discord to load the new build."
+        $summary.BuildPerformed = $true
+
+        $install = Get-DiscordInstall
+        if ($install -and -not (Test-EquicordInjectionMarker -Install $install)) {
+            Write-Warn "$($install.Name) is no longer patched (it probably updated). Reinjecting..."
+            if (Invoke-EquicordInject -Repair) { $summary.InjectPerformed = $true }
+        }
+        Write-PluginApplySummary -Summary $summary
+        Write-Success "Everything is rebuilt. Restart Discord to load it."
     } catch {
         Write-Err $_.Exception.Message
     }
@@ -2331,7 +2385,7 @@ function Show-MainMenu {
         Write-Section "What do you want to do?"
         Write-MenuItem "1" "Full Equicord setup"
         Write-MenuItem "2" "Manage custom plugins"
-        Write-MenuItem "3" "Update Equicord and rebuild"
+        Write-MenuItem "3" "Update Equicord and rebuild everything"
         Write-MenuItem "4" "Repair/reinject Equicord"
         Write-MenuItem "5" "Diagnostics/status"
         Write-MenuItem "6" "Fully remove my Equicord setup"
@@ -2341,7 +2395,7 @@ function Show-MainMenu {
         switch (Get-KeyChoice) {
             "1" { Run-FullSetup }
             "2" { Run-ManagePlugins }
-            "3" { Run-UpdateEquicord }
+            "3" { Run-RebuildEverything }
             "4" { Run-RepairReinject }
             "5" { Run-Diagnostics }
             "6" { Run-FullRemoval }

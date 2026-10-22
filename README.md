@@ -55,9 +55,11 @@ Known token-grabbing behaviour, unsafe functionality, and outdated APIs have bee
 ## What the script does
 
 - Installs or updates an official Equicord source checkout
-- Lets you choose which plugins to include
+- Lets you install all plugins in one go, or pick specific ones (type `1 4 7` or `2-5`)
 - Builds Equicord and injects it into the Discord installation you pick
-- Rebuilds after plugin changes and repairs injection after Discord updates
+- Rebuilds automatically after plugin changes
+- **Update Equicord and rebuild everything**: one option pulls the latest Equicord, rewrites your plugins, rebuilds, and reinjects Discord only if it lost Equicord
+- Repairs injection after Discord updates
 - Shows status and diagnostics
 - Fully removes everything it installed (Linux can also restore backups)
 
