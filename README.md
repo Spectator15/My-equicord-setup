@@ -20,7 +20,7 @@
 > [!WARNING]
 > Do not run `Equicord.bat` as Administrator. The script refuses to continue when elevated.
 
-**Linux (beta):** download `Equicord-Linux.sh` from the [Linux beta release](https://github.com/Spectator15/My-equicord-setup/releases/tag/v1.1.0-beta.3), then:
+**Linux (beta):** download `Equicord-Linux.sh` from the [Linux beta release](https://github.com/Spectator15/My-equicord-setup/releases/tag/v1.1.0-beta.4), then:
 
 ```bash
 chmod +x Equicord-Linux.sh

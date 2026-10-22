@@ -13,7 +13,7 @@ set -euo pipefail
 IFS=$'\n\t'
 
 readonly MANAGER_NAME="My Equicord Setup"
-readonly MANAGER_VERSION="1.1.0-beta.3"
+readonly MANAGER_VERSION="1.1.0-beta.4"
 readonly STATE_FORMAT="1"
 readonly EQUICORD_REMOTE="https://github.com/Equicord/Equicord.git"
 readonly TESTED_EQUICORD_COMMIT="0d27aec1ab604f1c0d7f7eb9114114e71da93573"
