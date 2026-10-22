@@ -5,8 +5,7 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/Spectator15/My-equicord-setup/releases/latest"><img src="https://img.shields.io/github/v/release/Spectator15/My-equicord-setup?label=stable" alt="Latest release"></a>
-  <a href="https://github.com/Spectator15/My-equicord-setup/releases"><img src="https://img.shields.io/github/v/release/Spectator15/My-equicord-setup?include_prereleases&label=linux%20beta&color=orange" alt="Linux beta"></a>
+  <a href="https://github.com/Spectator15/My-equicord-setup/actions/workflows/build-release.yml"><img src="https://github.com/Spectator15/My-equicord-setup/actions/workflows/build-release.yml/badge.svg?branch=main" alt="Build status"></a>
   <img src="https://img.shields.io/badge/platform-Windows%20%7C%20Linux-blue" alt="Platforms">
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-GPL--3.0--or--later-green" alt="License"></a>
 </p>
@@ -15,19 +14,20 @@
 
 ## Quick start
 
-**Windows:** download `Equicord.bat` from the [latest release](https://github.com/Spectator15/My-equicord-setup/releases/latest), run it normally, and follow the menu.
+**Windows:** open [`Equicord.bat`](https://github.com/Spectator15/My-equicord-setup/blob/main/Equicord.bat), click the **Download raw file** button (the ↓ icon at the top right of the file), then run it normally and follow the menu.
 
 > [!WARNING]
 > Do not run `Equicord.bat` as Administrator. The script refuses to continue when elevated.
 
-**Linux (beta):** download `Equicord-Linux.sh` from the [Linux beta release](https://github.com/Spectator15/My-equicord-setup/releases/tag/v1.1.0-beta.4), then:
+**Linux (beta):**
 
 ```bash
+curl -LO https://raw.githubusercontent.com/Spectator15/My-equicord-setup/main/Equicord-Linux.sh
 chmod +x Equicord-Linux.sh
 ./Equicord-Linux.sh
 ```
 
-Each script is self-contained. You don't need to clone this repo or build anything yourself.
+Each script is a single self-contained file that always matches the latest code. You don't need to clone this repo or build anything yourself.
 
 ## Why this exists
 

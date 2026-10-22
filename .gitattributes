@@ -1,2 +1,3 @@
-Equicord.bat text eol=crlf
+# Stored as-is with CRLF so downloading it straight from GitHub gives a ready-to-run Windows file.
+Equicord.bat -text
 *.sh text eol=lf
