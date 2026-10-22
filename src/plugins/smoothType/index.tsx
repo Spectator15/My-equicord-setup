@@ -11,6 +11,8 @@ import { definePluginSettings } from "@api/Settings";
 import definePlugin, { OptionType } from "@utils/types";
 
 const STYLE_ID = "vc-smoothtype";
+const CARET_ID = "vc-smoothtype-caret";
+const EDITOR_SELECTOR = "[data-slate-editor]";
 
 const settings = definePluginSettings({
     transitionDelay: {
@@ -33,6 +35,8 @@ const settings = definePluginSettings({
     },
 });
 
+// The caret moves with transform so the animation runs on the compositor instead of re-laying out the page.
+// Themes can recolor it with --smoothtype-caret.
 function buildCSS(): string {
     const ms = settings.store.transitionDelay ?? 60;
     const easing = settings.store.animationType ?? "ease";
@@ -41,106 +45,150 @@ function buildCSS(): string {
     0%, 100% { opacity: 1; }
     50%       { opacity: 0; }
 }
-#vc-smoothtype-caret.is-blinking {
+#${CARET_ID}.is-blinking {
     animation: vc-blink 1s ease-in-out infinite;
 }
-#vc-smoothtype-caret {
+#${CARET_ID} {
     position: fixed;
     top: 0; left: 0;
     width: 2px;
     border-radius: 2px;
-    background: white;
+    background: var(--smoothtype-caret, white);
     pointer-events: none;
     z-index: 99999;
     display: none;
-    transition: left ${ms}ms ${easing}, top ${ms}ms ${easing}, height ${ms}ms ${easing};
+    will-change: transform;
+    transition: transform ${ms}ms ${easing}, height ${ms}ms ${easing};
 }
-[data-slate-editor] { caret-color: transparent !important; }
+${EDITOR_SELECTOR} { caret-color: transparent !important; }
 `;
 }
 
-function getCaret(): HTMLDivElement | null {
-    let el = document.getElementById("vc-smoothtype-caret") as HTMLDivElement | null;
-    if (!el) {
-        if (!document.body) return null;
-        el = document.createElement("div");
-        el.id = "vc-smoothtype-caret";
-        document.body.appendChild(el);
-    }
-    return el;
-}
-
+let caret: HTMLDivElement | null = null;
+let editor: HTMLElement | null = null;
+let frame = 0;
+let lastX = NaN, lastY = NaN, lastHeight = NaN;
+let mutationObserver: MutationObserver | null = null;
+let resizeObserver: ResizeObserver | null = null;
 let blinkTimer: ReturnType<typeof setTimeout> | null = null;
+let syncTimer: ReturnType<typeof setTimeout> | null = null;
 let initTimer: ReturnType<typeof setTimeout> | null = null;
 let initialized = false;
 
-function startBlink() { blinkTimer = null; const el = getCaret(); if (!el) return; el.classList.add("is-blinking"); }
+function getCaret(): HTMLDivElement | null {
+    if (caret?.isConnected) return caret;
+    if (!document.body) return null;
+    caret = document.getElementById(CARET_ID) as HTMLDivElement | null;
+    if (!caret) {
+        caret = document.createElement("div");
+        caret.id = CARET_ID;
+        document.body.appendChild(caret);
+    }
+    return caret;
+}
+
+function hideCaret() {
+    if (caret) caret.style.display = "none";
+    lastX = lastY = lastHeight = NaN;
+}
+
+function startBlink() { blinkTimer = null; caret?.classList.add("is-blinking"); }
 function stopBlink() {
-    const el = getCaret(); if (!el) return;
-    el.classList.remove("is-blinking");
+    caret?.classList.remove("is-blinking");
     if (blinkTimer) clearTimeout(blinkTimer);
     blinkTimer = setTimeout(startBlink, 1000);
 }
 
-function applyCaretPosition() {
+// Coalesce every trigger into one layout read per frame, right before the browser paints anyway.
+function scheduleUpdate() {
+    if (editor && !frame) frame = requestAnimationFrame(updateCaret);
+}
+
+function updateCaret() {
+    frame = 0;
     const el = getCaret();
     if (!el) return;
-    if (!document.activeElement?.closest("[data-slate-editor]")) { el.style.display = "none"; return; }
+    if (!editor?.isConnected || document.activeElement?.closest(EDITOR_SELECTOR) !== editor) { hideCaret(); return; }
     const sel = window.getSelection();
-    if (!sel?.rangeCount) { el.style.display = "none"; return; }
+    if (!sel?.rangeCount) { hideCaret(); return; }
     const range = sel.getRangeAt(0).cloneRange();
     range.collapse(false);
-    const rects = range.getClientRects();
-    let rect: DOMRect | null = rects.length > 0 ? rects[0] : null;
+    let rect: DOMRect | null = range.getClientRects()[0] ?? null;
     if (!rect || rect.height === 0) {
         const node = range.startContainer;
         const parent = (node.nodeType === Node.TEXT_NODE ? node.parentElement : node) as HTMLElement | null;
-        if (parent) rect = parent.getBoundingClientRect();
+        rect = parent?.getBoundingClientRect() ?? null;
     }
-    if (!rect || rect.height === 0) { el.style.display = "none"; return; }
-    const newLeft = rect.right + "px";
-    const newTop = rect.top + "px";
-    if (el.style.left !== newLeft || el.style.top !== newTop) { if (el.style.display !== "none") stopBlink(); }
+    if (!rect || rect.height === 0) { hideCaret(); return; }
+    const x = rect.right, y = rect.top, height = rect.height;
+    if (x === lastX && y === lastY && height === lastHeight) return;
+    lastX = x; lastY = y; lastHeight = height;
+
+    const wasHidden = el.style.display === "none" || !el.style.display;
+    // Jump straight to the caret when it first appears instead of sliding in from its old spot
+    if (wasHidden) el.style.transition = "none";
     el.style.display = "block";
-    el.style.left = newLeft;
-    el.style.top = rect.top + "px";
-    el.style.height = rect.height + "px";
+    el.style.transform = `translate(${x}px, ${y}px)`;
+    el.style.height = height + "px";
+    if (wasHidden) { void el.offsetWidth; el.style.transition = ""; }
+    stopBlink();
 }
 
-let observer: MutationObserver | null = null;
-function startObserver() {
-    if (observer || document.visibilityState === "hidden") return;
-    observer = new MutationObserver(() => applyCaretPosition());
-    observer.observe(document.body, { childList: true, subtree: true });
+// Watch only the focused editor, not the whole app, so channel loads and pastes elsewhere cost nothing
+function attach(next: HTMLElement | null) {
+    if (next === editor) { scheduleUpdate(); return; }
+    detach();
+    if (!next) return;
+    editor = next;
+    mutationObserver = new MutationObserver(scheduleUpdate);
+    mutationObserver.observe(next, { childList: true, subtree: true, characterData: true });
+    resizeObserver = new ResizeObserver(scheduleUpdate);
+    resizeObserver.observe(next);
+    const box = next.closest("form");
+    if (box) resizeObserver.observe(box);
+    scheduleUpdate();
 }
-function stopObserver() { observer?.disconnect(); observer = null; }
 
-function handleVisibilityChange() {
-    if (document.visibilityState === "hidden") { stopObserver(); }
-    else if (document.activeElement?.closest("[data-slate-editor]")) { startObserver(); }
+function detach() {
+    mutationObserver?.disconnect(); mutationObserver = null;
+    resizeObserver?.disconnect(); resizeObserver = null;
+    editor = null;
+    if (frame) { cancelAnimationFrame(frame); frame = 0; }
+    hideCaret();
+}
+
+function syncEditor() {
+    syncTimer = null;
+    attach(document.hasFocus() ? document.activeElement?.closest<HTMLElement>(EDITOR_SELECTOR) ?? null : null);
 }
 
 const handlers = {
-    sel:   () => applyCaretPosition(),
-    focus: () => { applyCaretPosition(); if (document.activeElement?.closest("[data-slate-editor]")) startObserver(); },
-    blur:  () => { const el = getCaret(); if (el) el.style.display = "none"; stopObserver(); },
-    key:   () => applyCaretPosition(),
-    click: () => { applyCaretPosition(); if (document.activeElement?.closest("[data-slate-editor]")) startObserver(); else stopObserver(); },
+    focusIn: () => syncEditor(),
+    // Focus has not landed anywhere yet during focusout, so check once it has
+    focusOut: () => { if (!syncTimer) syncTimer = setTimeout(syncEditor, 0); },
+    selection: () => scheduleUpdate(),
+    // Long messages scroll inside the chat bar
+    scroll: (e: Event) => { if (editor && (e.target as Node | null)?.contains?.(editor)) scheduleUpdate(); },
+    resize: () => scheduleUpdate(),
 };
 
 function startListeners() {
-    document.addEventListener("selectionchange", handlers.sel);
-    document.addEventListener("focusin", handlers.focus);
-    document.addEventListener("focusout", handlers.blur);
-    document.addEventListener("keyup", handlers.key, true);
-    document.addEventListener("click", handlers.click, true);
+    document.addEventListener("focusin", handlers.focusIn);
+    document.addEventListener("focusout", handlers.focusOut);
+    document.addEventListener("selectionchange", handlers.selection);
+    document.addEventListener("scroll", handlers.scroll, true);
+    window.addEventListener("resize", handlers.resize);
+    window.addEventListener("focus", handlers.focusIn);
+    window.addEventListener("blur", handlers.focusIn);
 }
 function stopListeners() {
-    document.removeEventListener("selectionchange", handlers.sel);
-    document.removeEventListener("focusin", handlers.focus);
-    document.removeEventListener("focusout", handlers.blur);
-    document.removeEventListener("keyup", handlers.key, true);
-    document.removeEventListener("click", handlers.click, true);
+    document.removeEventListener("focusin", handlers.focusIn);
+    document.removeEventListener("focusout", handlers.focusOut);
+    document.removeEventListener("selectionchange", handlers.selection);
+    document.removeEventListener("scroll", handlers.scroll, true);
+    window.removeEventListener("resize", handlers.resize);
+    window.removeEventListener("focus", handlers.focusIn);
+    window.removeEventListener("blur", handlers.focusIn);
 }
 
 function applyCSS() {
@@ -164,19 +212,20 @@ export default definePlugin({
             if (initialized) return;
             initialized = true;
             applyCSS();
-            getCaret();
-            if (document.activeElement?.closest("[data-slate-editor]")) startObserver();
             startListeners();
-            document.addEventListener("visibilitychange", handleVisibilityChange);
+            syncEditor();
         };
         init();
     },
     stop() {
         initialized = false;
         if (initTimer) { clearTimeout(initTimer); initTimer = null; }
-        document.removeEventListener("visibilitychange", handleVisibilityChange);
-        stopObserver(); stopListeners(); removeCSS();
+        if (syncTimer) { clearTimeout(syncTimer); syncTimer = null; }
+        stopListeners();
+        detach();
+        removeCSS();
         if (blinkTimer) { clearTimeout(blinkTimer); blinkTimer = null; }
-        document.getElementById("vc-smoothtype-caret")?.remove();
+        caret?.remove(); caret = null;
+        document.getElementById(CARET_ID)?.remove();
     },
 });
