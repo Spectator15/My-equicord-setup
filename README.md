@@ -14,6 +14,9 @@
 
 ## Quick start
 
+> [!NOTE]
+> There's no Releases page. Download the installer straight from this repo: `Equicord.bat` for Windows, `Equicord-Linux.sh` for Linux. It's always the latest version.
+
 **Windows:** open [`Equicord.bat`](https://github.com/Spectator15/My-equicord-setup/blob/main/Equicord.bat), click the **Download raw file** button (the ↓ icon at the top right of the file), then run it normally and follow the menu.
 
 > [!WARNING]
