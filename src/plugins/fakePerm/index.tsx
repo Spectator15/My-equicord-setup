@@ -26,7 +26,7 @@ const settings = definePluginSettings({
                 });
                 clearFakePermState();
             }
-            showToast(v ? "FakePerm enabled" : "FakePerm disabled");
+            toast(v ? "FakePerm enabled" : "FakePerm disabled");
         }
     }
 });
@@ -46,7 +46,7 @@ function getGuildRoles(guildId: string | null): Array<{ id: string; name: string
     catch { try { const g = (GuildStore as any)?.getGuild?.(guildId); if (!g?.roles) return []; return Object.values(g.roles as Record<string, any>).filter((r: any) => r.id !== guildId).sort((a: any, b: any) => b.position - a.position).map((r: any) => ({ id: r.id, name: r.name, color: r.color })); } catch { return []; } }
 }
 function getMemberRoleIds(guildId: string | null, userId: string): string[] { if (!guildId) return []; try { return (GuildMemberStore as any)?.getMember?.(guildId, userId)?.roles ?? []; } catch { return getMember(guildId, userId)?.roles ?? []; } }
-function toast(msg: string) { try { showToast(msg); } catch {} }
+function toast(msg: string) { try { showToast({ text: msg }); } catch {} }
 
 function hideMessageInDOM(messageId: string) {
     let msgEl: HTMLElement | null = document.querySelector(`[id$="-${messageId}"]`) ?? document.querySelector(`[data-list-item-id$="${messageId}"]`);
