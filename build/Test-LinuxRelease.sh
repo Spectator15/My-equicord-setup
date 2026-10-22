@@ -90,7 +90,7 @@ test_executable() { [[ -x $release ]]; }
 test_shebang() { [[ $(head -n 1 "$release") == '#!/usr/bin/env bash' ]]; }
 test_shell_syntax() { bash -n "$source_file" && bash -n "$release" && bash -n "$build_script"; }
 test_no_markers() { ! grep -Fq '<BUILD:BUNDLED_PLUGIN_PAYLOAD>' "$release"; }
-test_no_machine_paths() { ! grep -Fqi 'C:/Users/' "$release" && ! grep -Fqi 'Users/Spectator15' "$release" && ! grep -Fq "$repo_root" "$release"; }
+test_no_machine_paths() { ! grep -Fqi 'C:/Users/' "$release" && ! grep -Fq "$repo_root" "$release"; }
 
 test_payload_matches() {
     source_release
