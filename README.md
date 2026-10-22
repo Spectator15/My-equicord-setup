@@ -1,87 +1,100 @@
 <h1 align="center">My Equicord Setup</h1>
 
-<p align="center">This repo contains my personal Equicord setup scripts. They install Equicord and let me manage a small collection of custom plugins that I personally use on Windows or Linux.</p>
+<p align="center">
+  A one-script installer for <a href="https://github.com/Equicord/Equicord">Equicord</a> with a hand-picked, reviewed set of custom plugins — for Windows and Linux.
+</p>
+
+<p align="center">
+  <a href="https://github.com/Spectator15/My-equicord-setup/releases/latest"><img src="https://img.shields.io/github/v/release/Spectator15/My-equicord-setup?label=stable" alt="Latest release"></a>
+  <a href="https://github.com/Spectator15/My-equicord-setup/releases"><img src="https://img.shields.io/github/v/release/Spectator15/My-equicord-setup?include_prereleases&label=linux%20beta&color=orange" alt="Linux beta"></a>
+  <img src="https://img.shields.io/badge/platform-Windows%20%7C%20Linux-blue" alt="Platforms">
+  <a href="LICENSE"><img src="https://img.shields.io/badge/license-GPL--3.0--or--later-green" alt="License"></a>
+</p>
 
 ---
 
-## Why this exists
+## Quick start
 
-Nightcord has some genuinely useful plugins that I could not find good replacements for elsewhere. However, I stopped trusting Nightcord itself after Vendicated, the creator of Vencord, published evidence showing that Nightcord `v1.18.2` contained a token logger which uploaded Discord tokens to Nightcord's server.
-
-The offending code appears to have been removed from later Nightcord releases, but after something like that had already been shipped, I did not feel comfortable trusting future prebuilt versions.
-
-Instead, I decided to take only the individual plugins I wanted, inspect and clean them up where needed, and compile them myself through Equicord. This repo is basically my personal way of keeping the useful parts without having to install or trust Nightcord itself.
-
-**Evidence published by Vendicated:** [View the published evidence](https://gist.github.com/Vendicated/bb30cb67878fa682bcee140f56af1531)
-
-## What the setup does
-
-The setup installs or updates an official [Equicord](https://github.com/Equicord/Equicord) source checkout, puts my bundled plugins in `src/userplugins`, builds Equicord, and applies that custom build to a selected Discord installation. It can also rebuild after plugin changes, repair the injection after Discord updates, report diagnostics, and fully remove the manager-owned setup. Linux also supports restoring a manager backup.
-
-**The currently bundled plugins are:**
-
-- `SmoothType`
-- `StreamerModeOnStream`
-- `ExportDM`
-- `ServerCloner`
-- `AntiDeleteMessage`
-- `LastSeen`
-- `StreamProof`
-- `FakePerm`
-- `FakeDM`
-- `AntiMoveDeco`
-
-Some of these originated from Nightcord while others come from or are based on the wider Vencord and Equicord ecosystem.
-
-Where needed, I have removed or replaced known unwanted token-grabbing behaviour, unsafe functionality, and outdated API usage from the versions included here. I still recommend looking through the code yourself before running anything you do not trust.
-
-All ten bundled plugins have the required Equicord user-plugin entry structure, and they compile against the upstream Equicord commit recorded in the testing section below. No plugin contains a detected Windows-only runtime dependency. Their live behaviour on a graphical Linux Discord session still needs manual beta testing.
-
-## Windows
-
-1. Download `Equicord.bat` from the [latest stable GitHub release](https://github.com/Spectator15/My-equicord-setup/releases/latest), or download it directly from the repository.
-2. Run `Equicord.bat` normally.
-3. Follow the menu.
-
-Normal users do not need to build or combine anything. The committed `Equicord.bat` is the complete ready-to-run Windows installer.
+**Windows:** download `Equicord.bat` from the [latest release](https://github.com/Spectator15/My-equicord-setup/releases/latest), run it normally, and follow the menu.
 
 > [!WARNING]
-> Do not run `Equicord.bat` as Administrator. The script intentionally refuses to continue when elevated.
+> Do not run `Equicord.bat` as Administrator. The script refuses to continue when elevated.
 
-On a fresh setup, the full setup option handles the Equicord installation, plugin selection, dependencies, build, and Discord injection. After that, the same script can change the selected plugins, update Equicord, rebuild it, or repair the Discord injection.
-
-To uninstall, choose **Fully remove my Equicord setup** (option 6). It shows the recorded Discord branch, exact paths, injection state, and cleanup plan, then requires you to type `REMOVE`. If an older setup has no recorded target, or that target is unavailable, you must explicitly select the correct installation. Only that client is closed when needed and relaunched if it was running.
-
-Removal uses official Equilotl uninjection first and verifies that Discord's original `app.asar` is restored before deleting the verified `Documents\Equicord` checkout and `%LOCALAPPDATA%\EquicordSetup` state, including manager logs, backups, dependency state, and cached installer files. Discord itself, account data, ordinary settings, other installations, and shared tools such as Git, Node.js, pnpm, Corepack, and PowerShell stay installed. The downloaded `Equicord.bat` is not self-deleted; delete it manually afterward if you no longer want it.
-
-Ownership, the official Git remote, exact local paths, and the worktree are checked before cleanup. Older clean setups can establish ownership only after the same typed confirmation. Local edits, untracked files, modified or unknown ignored plugins, and questionable paths are preserved. Failed uninjection keeps the workspace and recovery information. A later cleanup failure is reported as **partial cleanup**, without reinjecting Equicord. Resolve the reported content, lock, or permission issue and run the removal option again; retained ownership and stage records allow a safe retry. No real Discord installation is used by the disposable Windows uninstall tests.
-
-## Linux beta
-
-Download `Equicord-Linux.sh` from the [Linux beta release](https://github.com/Spectator15/My-equicord-setup/releases/tag/v1.1.0-beta.3), then run:
+**Linux (beta):** download `Equicord-Linux.sh` from the [Linux beta release](https://github.com/Spectator15/My-equicord-setup/releases/tag/v1.1.0-beta.3), then:
 
 ```bash
 chmod +x Equicord-Linux.sh
 ./Equicord-Linux.sh
 ```
 
-Normal users only need that one release script. It contains the bundled plugin sources and does not require PowerShell or a separate copy of this repository.
+Each script is self-contained. You don't need to clone this repo or build anything yourself.
 
-Equicord user plugins must be compiled from source, so the Linux setup cannot use a normal prebuilt Equicord package on its own. The initial setup needs Git, `curl`, core build utilities, Node.js 22 or newer, and npm or optional Corepack to obtain the `pnpm` version declared by the checked-out Equicord `package.json`. An already-installed exact version is also enough. The script checks prerequisites and prints distribution-specific package guidance, but it does not install system packages automatically.
+## Why this exists
 
-A newer or older distro `pnpm` is left untouched. After acquiring or updating Equicord's source, the setup reuses the exact declared version when available, otherwise tries Corepack's `install --global` and older `prepare --activate` commands. If Corepack is missing or unusable, it automatically uses `npm install --global --prefix "$HOME/.local"` for that exact version. This fallback needs network access and a safe, user-owned destination. It does not use `sudo`, change npm's permanent prefix, or edit shell profiles. Install and build commands use the verified executable directly, and reruns reuse it when its version still matches. Status shows the required version, PATH version, selected method, and executable without provisioning anything. These user-local shared tools remain installed after full setup removal.
+Nightcord has some genuinely useful plugins I couldn't find elsewhere. But Vendicated, the creator of Vencord, [published evidence](https://gist.github.com/Vendicated/bb30cb67878fa682bcee140f56af1531) that Nightcord `v1.18.2` shipped a token logger that uploaded Discord tokens to Nightcord's server.
 
-The initial dependency install and source build may take several minutes and use additional disk space. The Linux menu provides:
+The code was later removed, but after something like that I didn't want to trust their prebuilt releases again. So I took only the plugins I wanted, reviewed and cleaned them up, and compile them myself through official Equicord.
 
-1. Install or repair my Equicord setup
-2. Update Equicord and my plugins
-3. Rebuild and reapply my plugins
-4. Fully remove my Equicord setup
-5. Restore a backup
-6. Status and diagnostics
-7. Exit
+## Bundled plugins
 
-The manager uses these XDG locations by default:
+| Plugin | What it does | Credit |
+| --- | --- | --- |
+| **SmoothType** | Smooth animated caret in the message box | Spectator15 |
+| **StreamerModeOnStream** | Turns on Streamer Mode automatically when you start streaming | IcedMarina |
+| **ExportDM** | Exports chats as JSON, HTML, or a full offline ZIP archive | sqlu |
+| **ServerCloner** | Clones a whole server into one where you're an admin | Nightcord |
+| **AntiDeleteMessage** | Resends your messages if someone deletes them | Nightcord |
+| **LastSeen** | Shows when a user was last seen | Nightcord |
+| **StreamProof** | Blurs Discord content while streaming; click to reveal | TheArmagan |
+| **FakePerm** | Visually simulates moderation options (no real actions) | Nightcord |
+| **FakeDM** | Adds fake messages and calls to DMs, visible only to you | sqlu |
+| **AntiMoveDeco** | Stops you from being moved or disconnected from voice | Nightcord |
+
+Known token-grabbing behaviour, unsafe functionality, and outdated APIs have been removed or replaced where needed. You should still read the code yourself before running anything you don't trust.
+
+## What the script does
+
+- Installs or updates an official Equicord source checkout
+- Lets you choose which plugins to include
+- Builds Equicord and injects it into the Discord installation you pick
+- Rebuilds after plugin changes and repairs injection after Discord updates
+- Shows status and diagnostics
+- Fully removes everything it installed (Linux can also restore backups)
+
+**Removing it:** choose **Fully remove my Equicord setup** and type `REMOVE` to confirm. It restores Discord's original files, then deletes only what the manager created. Discord itself, your account, and shared tools like Git and Node.js are left alone. Anything you edited yourself is kept, never deleted. The downloaded script doesn't delete itself; remove it by hand if you like.
+
+<details>
+<summary><b>How removal stays safe (details)</b></summary>
+
+- Ownership, the official Git remote, exact paths, and the worktree are all checked before anything is deleted.
+- Uninjection uses the official Equilotl tool and checks that Discord's original `app.asar` is back before cleanup continues.
+- Local edits, unknown plugins, and anything questionable are kept, not deleted.
+- If something fails partway through, it reports **partial cleanup** without reinjecting. Fix the reported issue and run removal again to resume safely.
+- Only the selected Discord client is closed, and it's relaunched if it was running.
+- On Linux, Flatpak permission overrides are restored only when the manager can prove it made them.
+- Unattended Linux removal requires `MES_NONINTERACTIVE=1` plus `--remove --confirm-remove`.
+
+</details>
+
+## Linux notes
+
+Equicord user plugins have to be compiled from source, so Linux needs **Git, `curl`, core build tools, and Node.js 22+**. The script checks for these and tells you the right install command for your distro, but it won't install system packages for you. It finds the exact `pnpm` version Equicord needs on its own, without `sudo`.
+
+The first setup can take a few minutes. It never runs as root, and it only asks for elevation if the Discord install you chose is system-owned.
+
+<details>
+<summary><b>Supported Discord clients</b></summary>
+
+- **Supported:** Discord Stable, PTB, and Canary as native, system Electron, or versioned installs (the same layouts [Equilotl](https://github.com/Equicord/Equilotl) supports), plus matching layouts under `Applications` / `AppImages`.
+- **Experimental:** Flatpak. Detection and injection work, but it hasn't had a real graphical test yet.
+- **Not supported:** Snap (not supported upstream) and ChromeOS.
+- **Equibop:** detected, but not modified. Packaged Equibop doesn't include these custom plugins.
+- If more than one install is found, you choose which one gets patched. It never patches all of them.
+
+</details>
+
+<details>
+<summary><b>Where files are stored</b></summary>
 
 | Purpose | Default location |
 | --- | --- |
@@ -90,64 +103,35 @@ The manager uses these XDG locations by default:
 | Manager configuration | `${XDG_CONFIG_HOME:-$HOME/.config}/my-equicord-setup/` |
 | Verified injector and temporary build data | `${XDG_CACHE_HOME:-$HOME/.cache}/my-equicord-setup/` |
 
-Updates validate the official Git remote, refuse dirty or diverged checkouts, and use fetch plus fast-forward behavior. Plugin deployment is staged and backed up before replacement. A failed plugin build restores the previous manager-owned source set.
+</details>
 
-**Fully remove my Equicord setup** (or `--remove`) previews the recorded Discord target and every planned deletion, then requires typed `REMOVE`. It uses the verified official Equilotl CLI to uninject that client and checks that the exact original `app.asar` is restored before removing the manager's four XDG directories above, including the checkout, backups, configuration, logs, state, and cached injector. Only the selected client is closed when needed, and it is relaunched if it was running. Noninteractive removal requires both `MES_NONINTERACTIVE=1` and `--remove --confirm-remove`; the ordinary assume-yes setting cannot authorize it.
+<details>
+<summary><b>Testing status</b></summary>
 
-Discord, login data, ordinary settings, shared dependencies, unrelated clients, and plugins or themes outside the manager checkout remain untouched. A dirty checkout, unknown user plugin, edited managed plugin, unexpected file, wrong owner, or unsafe path is preserved. Failed uninjection retains recovery information. Interruptions and later cleanup failures report **partial cleanup** without reinjecting; fix the reported issue and rerun `--remove`. A recorded file inventory allows interrupted deletion to resume only while the remaining files still match. The downloaded `Equicord-Linux.sh` is never self-deleted; remove it manually afterward if desired. Uninstall still needs Git, Node.js, and the checked filesystem tools, but does not need pnpm or a rebuild.
+All ten plugins are compiled in Ubuntu CI against official Equicord commit `0d27aec1ab604f1c0d7f7eb9114114e71da93573`. Automated tests cover install, update, plugin staging, client detection, safe removal, and the `pnpm` setup across Ubuntu/Debian, Arch, Fedora, and openSUSE fixtures.
 
-For new Flatpak injections, the manager snapshots the relevant override before and after Equilotl changes it. Removal restores the previous override only when that ownership can still be proven and the current file has not changed independently. Legacy installs, interrupted permission changes, and externally modified overrides are left untouched with a warning. No broad `flatpak override --reset` is used. Restoring a provably manager-owned system override may require a narrowly scoped privilege prompt.
+**Not yet manually confirmed on Linux:** a real graphical Discord launch, plugins appearing in settings, Flatpak surviving updates, and each plugin's runtime behaviour. That's why Linux is still a beta.
 
-### Linux client support
-
-This beta supports `x86_64` Linux. Ubuntu is exercised on a real GitHub Actions Linux runner. The script is designed to be distribution-independent when its dependencies are available, but other distributions are not yet claimed as fully tested.
-
-Current Discord Stable, PTB, and Canary layouts are detected for native system or user installations, supported system Electron layouts, and versioned installations in the locations used by current [Equilotl](https://github.com/Equicord/Equilotl). Matching unpacked or versioned layouts under common `Applications` and `AppImages` directories can also be found. Standalone Snap packages are not supported upstream and are not offered as targets.
-
-Flatpak detection and injection follow current Equilotl behavior, including the required filesystem override, but Flatpak remains experimental here until it receives a real graphical test. The script never patches every discovered client automatically. If it finds more than one installation, it shows the branch, package format, resolved path, and injection status so you can choose one.
-
-The setup refuses to run as root. A verified, versioned Equilotl CLI asset is downloaded with its published SHA-256 digest. Elevation is requested only if that injector must modify a selected system-owned Discord target. Git, Node.js, `pnpm`, plugin deployment, builds, and XDG files stay under the normal user account.
-
-[Equibop](https://github.com/Equicord/Equibop) is a separate Linux-focused Discord client with Equicord preinstalled. Current Equibop can be pointed at a custom Equicord `dist` directory through its developer settings, but a normal packaged Equibop does not automatically contain this repository's custom plugins. This beta detects Equibop and explains that distinction, but does not change its settings or treat it as an installation target. ChromeOS is rejected, and NixOS receives a warning because the official documentation currently describes the Equibop Nix package as outdated.
-
-### Linux validation status
-
-Automated tests cover the generated release, XDG paths, paths with spaces and non-ASCII characters, safe Git updates, plugin staging and restoration, unknown-plugin preservation, native and Flatpak discovery, branch distinction, symlink deduplication, exact process targeting, root refusal, narrow mocked elevation, download failures, digest failures, deterministic generation, LF line endings, executable mode, and shell syntax.
-
-Package-manager fixtures also cover exact-version reuse, distro-version mismatches, modern and legacy Corepack, npm fallback, PATH precedence, command caching, repeat runs, changed upstream requirements, and failure diagnostics. Ubuntu/Debian, CachyOS/Arch, Fedora, openSUSE, and unknown-distribution guidance use the same version-resolution path. These are isolated fixtures, not claims of real-machine testing on each distribution.
-
-Full-uninstall validation also runs in disposable Ubuntu WSL 2 Linux-filesystem fixtures, never against a real Discord installation. It exercises native, Flatpak, and system Electron restoration layouts, typed confirmation, ownership and symlink protection, dirty-workspace preservation, partial-cleanup retry, exact disposable process closure/restart, and real SIGINT, SIGTERM, and SIGHUP both before and after restoration. The automated suite mocks injector and Flatpak writes. A separate WSL check successfully used the checksum-verified official Equilotl binary to uninject a disposable ASAR fixture and remove its manager files. None of these checks proves a graphical client works.
-
-The ten plugins are also compiled in Ubuntu CI against official Equicord commit `0d27aec1ab604f1c0d7f7eb9114114e71da93573`, with their names checked in the resulting bundle. The reviewed `streamerModeOnStream` folder collision is safe at that revision because upstream's plugin has the distinct runtime name `StreamerModeOn`, while this repository's plugin is `StreamerModeOnStream`. Any new collision, or a future loss of that distinction, stops the setup.
-
-The source build and injection structure are verified automatically. A real graphical Discord launch, plugin visibility in the settings page, Flatpak persistence after an update, and each plugin's runtime behavior have not yet been manually confirmed on Linux. That is why the Linux release is marked as a beta prerelease.
+</details>
 
 ## Development
 
-The editable installers and plugin sources live under `src/`. Contributors should change those source files rather than editing the generated `Equicord.bat` or `Equicord-Linux.sh` directly.
-
-Linux removal and Flatpak permission bookkeeping live in `src/EquicordUninstall.sh`, which the Linux release build embeds alongside `src/EquicordSetup.sh` and the unchanged plugin payloads.
-
-To rebuild the Windows release from the repository root, use:
+Edit the sources in `src/`, not the generated `Equicord.bat` / `Equicord-Linux.sh`. To rebuild:
 
 ```powershell
-.\build\Build-Release.ps1
+.\build\Build-Release.ps1          # Windows
 ```
-
-To rebuild the Linux release, use Bash:
 
 ```bash
-./build/Build-LinuxRelease.sh
+./build/Build-LinuxRelease.sh      # Linux
 ```
 
-Both complete generated files remain committed so normal users can download and run them directly. See the [GitHub releases page](https://github.com/Spectator15/My-equicord-setup/releases) for ready-to-run downloads.
+The generated scripts are committed so users can download them directly.
 
 ---
 
 ## Disclaimer
 
-This is a personal setup and is not an official Equicord, Vencord, Nightcord, Equilotl, Equibop, or Discord project.
+This is a personal project. It is not an official Equicord, Vencord, Nightcord, Equilotl, Equibop, or Discord project.
 
-This repository is distributed under `GPL-3.0-or-later`. Third-party components retain their original copyright and attribution.
-
-I do not claim ownership of third-party code included or adapted here. Existing copyright and licence notices inside plugin source are kept intact.
+Distributed under `GPL-3.0-or-later`. Third-party code keeps its original copyright and licence notices. I don't claim ownership of it.
