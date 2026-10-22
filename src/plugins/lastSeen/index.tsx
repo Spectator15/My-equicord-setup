@@ -85,6 +85,8 @@ function scheduleSave() {
     saveTimer = setTimeout(async () => {
         saveTimer = null;
         await ensureCacheLoaded();
+        // Trimming here (once per save) instead of on every presence update keeps big server loads cheap
+        trimEntries();
         try {
             await DataStore.set(STORAGE_KEY, entries);
         } catch (error) {
@@ -97,7 +99,6 @@ function recordSeen(userId: string | undefined, timestamp = Date.now()) {
     if (!userId || !/^\d+$/.test(userId)) return;
     void ensureCacheLoaded();
     entries[userId] = timestamp;
-    trimEntries();
     scheduleSave();
     notifyListeners();
 }
