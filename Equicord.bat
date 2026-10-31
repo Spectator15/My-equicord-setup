@@ -4022,7 +4022,11 @@ function Run-RebuildEverything {
     try {
         if (-not (Ensure-DevTools)) { Pause-Return; return }
         if (-not (Test-EquicordRepo $script:EquicordDir)) { throw "Equicord folder not found. Run Full Equicord setup first." }
-        Ensure-EquicordSource -UpdateExisting | Out-Null
+        # Discord's built-in "Update now" can download new code and then fail its own build, leaving nothing new to pull here.
+        if (-not (Ensure-EquicordSource -UpdateExisting)) {
+            Write-Info "No new code to download (Discord's own updater may already have fetched it)."
+            Write-Info "Rebuilding anyway, so Discord gets the latest version."
+        }
 
         $pluginsDir = Get-PluginsDir $script:EquicordDir
         $summary = Apply-BundledPluginSelection -Selection (Get-PreferredSelection -PluginsDir $pluginsDir)
