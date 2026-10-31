@@ -9,14 +9,17 @@
 
 import { addContextMenuPatch, NavContextMenuPatchCallback, removeContextMenuPatch } from "@api/ContextMenu";
 import { definePluginSettings } from "@api/Settings";
+import { Button } from "@components/Button";
+import { Divider } from "@components/Divider";
 import { FormSwitch } from "@components/FormSwitch";
+import { Heading } from "@components/Heading";
+import { Paragraph } from "@components/Paragraph";
 import { sleep } from "@utils/misc";
 import definePlugin, { OptionType } from "@utils/types";
 import type { RenderModalProps } from "@vencord/discord-types";
 import { findStoreLazy } from "@webpack";
-import { Button, Forms, GuildStore, IconUtils, Menu, Modal, openModal, React, RestAPI, Select, showToast, useMemo, useRef, UserStore, useState } from "@webpack/common";
+import { GuildStore, IconUtils, Menu, Modal, openModal, React, RestAPI, Select, showToast, useMemo, useRef, UserStore, useState } from "@webpack/common";
 
-const F = Forms as any;
 const PermissionStore = findStoreLazy("PermissionStore");
 const ADMIN_BIT = 0x8n;
 
@@ -70,14 +73,14 @@ function ServerClonerUI({ initialSourceId = "" }: { initialSourceId?: string }) 
     const OPTS = [{ key: "guildSettings", label: "Server settings" }, { key: "icon", label: "Icon" }, { key: "roles", label: "Roles" }, { key: "clearRoles", label: "Delete existing roles" }, { key: "channels", label: "Channels" }, { key: "noDeleteChannels", label: "Keep existing channels" }, { key: "permissions", label: "Permissions" }, { key: "emojis", label: "Emojis" }] as const;
     return (
         <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
-            <F.FormSection><F.FormTitle>Source server</F.FormTitle><Select options={allGuilds} placeholder="Choose..." isSelected={v => v === sourceId} select={v => setSourceId(v)} serialize={v => v} /></F.FormSection>
-            <F.FormSection><F.FormTitle>Target server (ADMIN required)</F.FormTitle>{adminGuilds.length === 0 ? <F.FormText style={{ color: "var(--text-danger)" }}>No admin servers found.</F.FormText> : <Select options={adminGuilds} placeholder="Choose..." isSelected={v => v === targetId} select={v => setTargetId(v)} serialize={v => v} />}</F.FormSection>
-            <F.FormDivider />
-            <F.FormSection><F.FormTitle>Options</F.FormTitle><div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "0 24px" }}>{OPTS.map(o => <FormSwitch key={o.key} title={o.label} value={opts[o.key]} onChange={v => setOpts(p => ({ ...p, [o.key]: v }))} disabled={_running} hideBorder />)}</div></F.FormSection>
-            <F.FormDivider />
+            <section><Heading>Source server</Heading><Select options={allGuilds} placeholder="Choose..." isSelected={v => v === sourceId} select={v => setSourceId(v)} serialize={v => v} /></section>
+            <section><Heading>Target server (ADMIN required)</Heading>{adminGuilds.length === 0 ? <Paragraph style={{ color: "var(--text-danger)" }}>No admin servers found.</Paragraph> : <Select options={adminGuilds} placeholder="Choose..." isSelected={v => v === targetId} select={v => setTargetId(v)} serialize={v => v} />}</section>
+            <Divider />
+            <section><Heading>Options</Heading><div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "0 24px" }}>{OPTS.map(o => <FormSwitch key={o.key} title={o.label} value={opts[o.key]} onChange={v => setOpts(p => ({ ...p, [o.key]: v }))} disabled={_running} hideBorder />)}</div></section>
+            <Divider />
             <div style={{ display: "flex", gap: 8 }}>
-                <Button size={Button.Sizes.MEDIUM} color={_running ? Button.Colors.PRIMARY : Button.Colors.BRAND} disabled={!sourceId || !targetId || _running} onClick={startClone} style={{ flex: 1 }}>{_running ? "Cloning..." : "Start cloning"}</Button>
-                {_running && <Button size={Button.Sizes.MEDIUM} color={Button.Colors.RED} onClick={() => { _cancelled = true; }} style={{ minWidth: 100 }}>Stop</Button>}
+                <Button variant={_running ? "secondary" : "primary"} disabled={!sourceId || !targetId || _running} onClick={startClone} style={{ flex: 1 }}>{_running ? "Cloning..." : "Start cloning"}</Button>
+                {_running && <Button variant="dangerPrimary" onClick={() => { _cancelled = true; }} style={{ minWidth: 100 }}>Stop</Button>}
             </div>
             {_running && <div style={{ height: 8, background: "var(--background-modifier-accent)", borderRadius: 4, overflow: "hidden" }}><div style={{ height: "100%", width: `${_progress}%`, background: "var(--brand-experiment)", transition: "width 0.3s" }} /></div>}
             {_logs.length > 0 && <div ref={logRef} style={{ maxHeight: 200, overflowY: "auto", background: "var(--background-secondary)", borderRadius: 4, padding: 8, fontFamily: "monospace", fontSize: 12 }}>{_logs.map((l, i) => <div key={i} style={{ color: logColors[l.type], marginBottom: 2 }}>{l.text}</div>)}</div>}
