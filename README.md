@@ -113,7 +113,7 @@ The first setup can take a few minutes. It never runs as root, and it only asks 
 <details>
 <summary><b>Testing status</b></summary>
 
-All ten plugins are compiled in Ubuntu CI against official Equicord commit `c3167a0306c125a83cff83aa200238d339ecf2a3`. Automated tests cover install, update, plugin staging, client detection, safe removal, and the `pnpm` setup across Ubuntu/Debian, Arch, Fedora, and openSUSE fixtures.
+All ten plugins are compiled in Ubuntu CI against official Equicord commit `8d0ebf3549890be2ecb1e1d602b1695f584c71cc`. Automated tests cover install, update, plugin staging, client detection, safe removal, and the `pnpm` setup across Ubuntu/Debian, Arch, Fedora, and openSUSE fixtures.
 
 **Not yet manually confirmed on Linux:** a real graphical Discord launch, plugins appearing in settings, Flatpak surviving updates, and each plugin's runtime behaviour. That's why Linux is still a beta.
 
