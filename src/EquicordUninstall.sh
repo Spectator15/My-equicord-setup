@@ -189,7 +189,7 @@ workspace_safe_for_full_removal() {
         is_bundled_plugin "$plugin" || return 1
         expected=$(awk -F '\t' -v p="$plugin" -v f="$relative" '$1=="file" && $2==p && $3==f {print $4}' "$STATE_FILE")
         [[ $expected =~ ^[0-9a-f]{64}$ && $(sha256_file "$WORKSPACE/$file") == "$expected" ]] || return 1
-    done < <(git -C "$WORKSPACE" ls-files -z --others --ignored --exclude-standard -- . ':!node_modules' ':!dist')
+    done < <(git -C "$WORKSPACE" ls-files -z --others --ignored --exclude-standard -- . ':(exclude,glob)**/node_modules/**' ':(exclude,glob)**/node_modules' ':!dist')
     if [[ -d $WORKSPACE/src/userplugins ]]; then
         while IFS= read -r -d '' file; do
             plugin=${file##*/}

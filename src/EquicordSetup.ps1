@@ -1434,6 +1434,16 @@ function Get-WorkspaceOwnershipAssessment {
         return [pscustomobject]$result
     }
 
+    # Checked before the cleanliness scan so a scan failure only preserves the workspace
+    # instead of also blocking Discord's uninjection.
+    try {
+        [void](Get-WorkspaceGitOutput -Workspace $Workspace -Arguments @("ls-files", "--error-unmatch", "--", "scripts/runInstaller.mjs"))
+        $runnerStatus = ((Get-WorkspaceGitOutput -Workspace $Workspace -Arguments @("status", "--porcelain=v1", "--", "scripts/runInstaller.mjs")) | Out-String).Trim()
+        $result.InstallerTrusted = [string]::IsNullOrWhiteSpace($runnerStatus)
+    } catch { $result.InstallerTrusted = $false }
+    $result.CanUseInstaller = $result.RepositoryValid -and $result.RemoteValid -and
+        $result.ProjectFilesValid -and $result.InstallerTrusted
+
     $result.ConfigValid = Test-ManagerConfigForWorkspace -Workspace $Workspace
     $result.OwnershipRecordValid = Test-WorkspaceOwnershipRecord -Workspace $Workspace
     try {
@@ -1447,16 +1457,8 @@ function Get-WorkspaceOwnershipAssessment {
         return [pscustomobject]$result
     }
 
-    try {
-        [void](Get-WorkspaceGitOutput -Workspace $Workspace -Arguments @("ls-files", "--error-unmatch", "--", "scripts/runInstaller.mjs"))
-        $runnerStatus = ((Get-WorkspaceGitOutput -Workspace $Workspace -Arguments @("status", "--porcelain=v1", "--", "scripts/runInstaller.mjs")) | Out-String).Trim()
-        $result.InstallerTrusted = [string]::IsNullOrWhiteSpace($runnerStatus)
-    } catch { $result.InstallerTrusted = $false }
-
     $result.LegacyEligible = -not $result.OwnershipRecordExists -and $result.ConfigValid -and $result.Clean
     $result.CanDeleteWorkspace = $result.Clean -and $result.ConfigValid -and ($result.OwnershipRecordValid -or $result.LegacyEligible)
-    $result.CanUseInstaller = $result.RepositoryValid -and $result.RemoteValid -and
-        $result.ProjectFilesValid -and $result.InstallerTrusted
     if (-not $result.Clean) {
         $result.Reason = "Local edits or untracked files were found, so the workspace will be preserved."
     } elseif ($result.OwnershipRecordValid) {
@@ -1479,9 +1481,10 @@ function Get-UnexplainedWorkspaceFiles {
             $expected["src/userplugins/$($plugin.FolderName)/$($file.Key)"] = [string]$file.Value
         }
     }
-    # node_modules and dist are generated, including pnpm's links. They are removed
-    # without following links. Everything else ignored by Git needs an explanation.
-    $ignored = @(Get-WorkspaceGitOutput $Workspace @("-c", "core.quotePath=false", "ls-files", "--others", "--ignored", "--exclude-standard", "--", ".", ":!node_modules", ":!dist"))
+    # node_modules (at any depth: pnpm workspaces nest them under packages/) and dist are
+    # generated, including pnpm's links. They are removed without following links.
+    # Everything else ignored by Git needs an explanation.
+    $ignored = @(Get-WorkspaceGitOutput $Workspace @("-c", "core.quotePath=false", "ls-files", "--others", "--ignored", "--exclude-standard", "--", ".", ":(exclude,glob)**/node_modules/**", ":(exclude,glob)**/node_modules", ":!dist"))
     foreach ($relative in $ignored) {
         $relative = [string]$relative
         $path = Join-Path $Workspace $relative
