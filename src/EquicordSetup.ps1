@@ -1865,20 +1865,39 @@ function Remove-ExactManagerDirectory {
 }
 
 function Get-WorkspaceRemovalInventory {
-    param([string]$Workspace)
+    # -Activity turns on progress output; hashing a large workspace takes minutes.
+    param([string]$Workspace, [string]$Activity)
     $pending = New-Object 'System.Collections.Generic.Queue[string]'
     $pending.Enqueue($Workspace)
-    while ($pending.Count) {
-        foreach ($item in Get-ChildItem -LiteralPath $pending.Dequeue() -Force -ErrorAction Stop) {
-            $relative = $item.FullName.Substring($Workspace.Length + 1)
-            if (($item.Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0) {
-                [pscustomobject]@{ path=$relative; kind="link"; value=([string]($item.Target -join "|")) }
-            } elseif ($item.PSIsContainer) {
-                [pscustomobject]@{ path=$relative; kind="directory"; value="" }
-                $pending.Enqueue($item.FullName)
-            } else {
-                [pscustomobject]@{ path=$relative; kind="file"; value=(Get-FileHash -LiteralPath $item.FullName -Algorithm SHA256 -ErrorAction Stop).Hash }
+    $fileCount = 0
+    $timer = [Diagnostics.Stopwatch]::StartNew()
+    if ($Activity) {
+        Write-Step "$Activity (this can take a few minutes)..."
+        Write-Progress -Activity $Activity -Status "Starting..."
+    }
+    try {
+        while ($pending.Count) {
+            foreach ($item in Get-ChildItem -LiteralPath $pending.Dequeue() -Force -ErrorAction Stop) {
+                $relative = $item.FullName.Substring($Workspace.Length + 1)
+                if (($item.Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0) {
+                    [pscustomobject]@{ path=$relative; kind="link"; value=([string]($item.Target -join "|")) }
+                } elseif ($item.PSIsContainer) {
+                    [pscustomobject]@{ path=$relative; kind="directory"; value="" }
+                    $pending.Enqueue($item.FullName)
+                } else {
+                    [pscustomobject]@{ path=$relative; kind="file"; value=(Get-FileHash -LiteralPath $item.FullName -Algorithm SHA256 -ErrorAction Stop).Hash }
+                    $fileCount++
+                    if ($Activity -and $timer.ElapsedMilliseconds -ge 500) {
+                        Write-Progress -Activity $Activity -Status "$fileCount files checked"
+                        $timer.Restart()
+                    }
+                }
             }
+        }
+    } finally {
+        if ($Activity) {
+            Write-Progress -Activity $Activity -Completed
+            Write-Info "Checked $fileCount files."
         }
     }
 }
@@ -1897,7 +1916,7 @@ function Test-InterruptedWorkspaceCleanup {
             (ConvertTo-NormalizedRepositoryRemote $record.remote) -cne (ConvertTo-NormalizedRepositoryRemote $script:RepoUrl)) { return $false }
         $expected = @{}
         foreach ($entry in $record.files) { $expected[$entry.path] = $entry }
-        foreach ($entry in @(Get-WorkspaceRemovalInventory $Workspace)) {
+        foreach ($entry in @(Get-WorkspaceRemovalInventory $Workspace -Activity "Verifying files left by an interrupted removal")) {
             if (-not $expected.ContainsKey($entry.path)) { return $false }
             $saved = $expected[$entry.path]
             if ($entry.kind -cne $saved.kind -or $entry.value -cne $saved.value) { return $false }
@@ -1971,7 +1990,7 @@ function Invoke-ManagerOwnedCleanup {
                         managerId = $script:ManagerId
                         workspacePath = $script:EquicordDir
                         remote = $script:RepoUrl
-                        files = @(Get-WorkspaceRemovalInventory $script:EquicordDir)
+                        files = @(Get-WorkspaceRemovalInventory $script:EquicordDir -Activity "Fingerprinting files in $($script:EquicordDir) before deleting them")
                     }
                     Write-Utf8FileAtomic -Path (Join-Path $script:ConfigDir "cleanup-files.json") -Content ($inventory | ConvertTo-Json -Depth 6) | Out-Null
                 }
