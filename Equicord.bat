@@ -3382,12 +3382,40 @@ function Get-DiscordInjectionState {
             return [pscustomobject]@{ Kind = "corrupt"; Display = "unrecognized loader; another installation may own it"; NeedsUninstall = $false }
         }
         $originalPath = if ($loaderActive) { $backup } else { $asar }
-        return [pscustomobject]@{ Kind = $(if ($loaderActive) { "injected" } else { "stale-backup" }); Display = $(if ($loaderActive) { "Equicord is injected" } else { "a stale injection backup is present" }); NeedsUninstall = $true; OriginalHash = (Get-FileHash -LiteralPath $originalPath -Algorithm SHA256).Hash }
+        $legacyFolder = $loaderActive -and (Test-Path -LiteralPath $asar -PathType Container)
+        return [pscustomobject]@{ Kind = $(if ($loaderActive) { "injected" } else { "stale-backup" }); Display = $(if ($legacyFolder) { "Equicord is injected (older folder-style loader)" } elseif ($loaderActive) { "Equicord is injected" } else { "a stale injection backup is present" }); NeedsUninstall = $true; LegacyFolderLoader = $legacyFolder; OriginalHash = (Get-FileHash -LiteralPath $originalPath -Algorithm SHA256).Hash }
     }
     if ($originalUsable -and -not $loaderActive) {
         return [pscustomobject]@{ Kind = "clean"; Display = "Discord already has its original app.asar"; NeedsUninstall = $false }
     }
     return [pscustomobject]@{ Kind = "corrupt"; Display = "Discord's app.asar state cannot be verified safely"; NeedsUninstall = $false }
+}
+
+# Older installers injected app.asar as a folder (index.js + package.json). Current Equilotl reads
+# app.asar as a file and fails silently on that layout, so undo it with the same two renames it uses.
+function Restore-LegacyFolderInjection {
+    param([Parameter(Mandatory = $true)]$Install)
+    [void](Assert-ValidatedDiscordInstall $Install)
+    $asar = Join-Path $Install.Resources "app.asar"
+    $backup = Join-Path $Install.Resources "_app.asar"
+    $aside = Join-Path $Install.Resources "app.asar.equicord-legacy-loader"
+    foreach ($path in @($asar, $backup)) { Assert-NoReparseTraversal $path }
+    if (-not (Test-Path -LiteralPath $asar -PathType Container) -or -not (Test-EquicordLoaderAsar -Path $asar)) {
+        throw "app.asar is not this setup's folder-style Equicord loader."
+    }
+    if (-not (Test-UninstallOriginalAsar $backup)) { throw "Discord's original _app.asar backup is missing or not a valid archive." }
+    if (Test-Path -LiteralPath $aside) { throw "A previous loader folder is still present: $aside" }
+
+    Write-Step "Restoring Discord's original app.asar (older folder-style loader)..."
+    [IO.Directory]::Move($asar, $aside)
+    try {
+        [IO.File]::Move($backup, $asar)
+    } catch {
+        [IO.Directory]::Move($aside, $asar)
+        throw "Could not put Discord's original app.asar back, so the loader was restored: $($_.Exception.Message)"
+    }
+    try { Remove-ManagerTreeWithoutFollowingLinks -Path $aside -Root $Install.Resources }
+    catch { Write-Warn "Discord is restored, but the old loader folder could not be deleted: $aside" }
 }
 
 function Test-DiscordRestoredAfterUninstall {
@@ -3753,7 +3781,8 @@ function Test-FullRemovalContextReady {
         (-not $Context.WorkspaceAssessment.PathValid -or -not $Context.WorkspaceAssessment.RepositoryValid -or
             -not $Context.WorkspaceAssessment.RemoteValid -or -not $Context.WorkspaceAssessment.ProjectFilesValid)) {
         $failure = $Context.WorkspaceAssessment.Reason
-    } elseif ($Context.InjectionState.NeedsUninstall -and -not $Context.WorkspaceAssessment.CanUseInstaller) {
+    } elseif ($Context.InjectionState.NeedsUninstall -and -not $Context.InjectionState.LegacyFolderLoader -and
+        -not $Context.WorkspaceAssessment.CanUseInstaller) {
         $failure = "The official Equicord installer wrapper cannot be trusted or is unavailable, so uninjection was not attempted."
     } elseif ($Context.WorkspaceAssessment.Exists -and -not $Context.WorkspaceAssessment.ConfigValid -and
         -not $Context.WorkspaceAssessment.OwnershipRecordValid) {
@@ -3778,7 +3807,13 @@ function Invoke-FullRemovalPlan {
     )
     if (-not $StageWriter) { $StageWriter = { param($stage, $message) Write-UninstallState -Stage $stage -Install $Context.Install -Message $message -ProcessState $processState } }
     if (-not $StopAction) { $StopAction = { param($install) Stop-SelectedDiscordForRemoval -Install $install } }
-    if (-not $UninstallAction) { $UninstallAction = { param($install) Invoke-EquicordInstallerAction -Action Uninstall -Install $install } }
+    if (-not $UninstallAction) {
+        $UninstallAction = {
+            param($install)
+            if ($Context.InjectionState.LegacyFolderLoader) { Restore-LegacyFolderInjection -Install $install }
+            else { Invoke-EquicordInstallerAction -Action Uninstall -Install $install }
+        }
+    }
     if (-not $VerifyAction) { $VerifyAction = { param($install) Test-DiscordRestoredAfterUninstall -Install $install } }
     if (-not $CleanupAction) {
         $CleanupAction = { param($assessment, $beforeConfig) Invoke-ManagerOwnedCleanup -WorkspaceAssessment $assessment -BeforeConfigRemoval $beforeConfig }
